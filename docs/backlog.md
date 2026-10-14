@@ -7,7 +7,7 @@ each needs explicit GO before implementation (per spec §7).
 
 ### CWD-1: рабочая директория как в PWA (owner request 2026-10-14)
 Выбор cwd для диалога (как выбор проектов в PWA: ~/.letta/projects —
-home_itolstov, ..._Projects, ..._Documents и т.д.). SDK: cwd в
+home_user, ..._Projects, ..._Documents и т.д.). SDK: cwd в
 CreateSessionOptions + session.changeDeviceState({cwd}) для живой сессии.
 UI: селектор рядом с исполнением в шапке. Пер-диалог, как TARGET-1.
 НЕ ДЕЛАТЬ ДО КОМАНДЫ.

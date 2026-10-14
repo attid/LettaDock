@@ -37,7 +37,10 @@ pub async fn proxy_letta_api(req: ProxyRequest) -> Result<ProxyResponse, String>
         || req.path.starts_with("//")
         || req.path.contains("..")
     {
-        return Err(format!("blocked proxy path: {}", &req.path[..req.path.len().min(80)]));
+        // Round-2 fix (agy P1): slice by chars, not bytes — byte slicing
+        // panics on multibyte UTF-8 (Cyrillic paths).
+        let preview: String = req.path.chars().take(80).collect();
+        return Err(format!("blocked proxy path: {preview}"));
     }
     let client = reqwest::Client::new();
     let mut url = format!("https://api.letta.com{}", req.path);
@@ -116,9 +119,11 @@ pub struct UploadRequest {
 /// Multipart upload of one file to /v1/sandboxes/{id}/files.
 /// FormData cannot pass through the JSON proxy command — this mirrors the
 /// proxy principle: the webview never talks to api.letta.com directly.
+/// Async multipart (agy P1: blocking client inside async fn panics the
+/// Tokio runtime on first upload).
 #[tauri::command]
 pub async fn proxy_upload_file(req: UploadRequest) -> Result<ProxyResponse, String> {
-    let part = reqwest::blocking::multipart::Part::bytes(req.bytes)
+    let part = reqwest::multipart::Part::bytes(req.bytes)
         .file_name(req.file_name.clone())
         .mime_str(&req.mime_type)
         .map_err(|e| e.to_string())?;
@@ -126,16 +131,17 @@ pub async fn proxy_upload_file(req: UploadRequest) -> Result<ProxyResponse, Stri
         "https://api.letta.com/v1/sandboxes/{}/files",
         urlencoding::encode(&req.sandbox_id)
     );
-    let form = reqwest::blocking::multipart::Form::new().part("file", part);
+    let form = reqwest::multipart::Form::new().part("file", part);
 
-    let resp = reqwest::blocking::Client::new()
+    let resp = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", req.api_key))
         .multipart(form)
         .send()
+        .await
         .map_err(|e| format!("upload failed: {e}"))?;
 
     let status = resp.status().as_u16();
-    let body = resp.text().map_err(|e| e.to_string())?;
+    let body = resp.text().await.map_err(|e| e.to_string())?;
     Ok(ProxyResponse { status, body })
 }

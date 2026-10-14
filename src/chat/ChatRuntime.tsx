@@ -71,7 +71,12 @@ function toThreadMessages(history: LettaMessage[]): ThreadMessageLike[] {
               type: "tool-call",
               toolCallId: raw?.tool_call_id ?? m.id,
               toolName: raw?.name ?? "tool",
-              argsText: "",
+              // Round-2 agy fix: pass real args text — ToolCall parses it
+              // for the diff button; empty string made canDiff always false.
+              argsText:
+                typeof raw?.arguments === "string"
+                  ? raw.arguments
+                  : JSON.stringify(safeParseObj(raw?.arguments) ?? {}),
               args: safeParseObj(raw?.arguments),
               result: raw?.done
                 ? (raw.result ?? "(готово)")
@@ -94,7 +99,7 @@ function toThreadMessages(history: LettaMessage[]): ThreadMessageLike[] {
               type: "tool-call",
               toolCallId: raw?.tool_call?.name ?? m.id,
               toolName: raw?.tool_call?.name ?? "approval",
-              argsText: "",
+              argsText: raw?.tool_call?.arguments ?? "",
               args: safeParseObj(raw?.tool_call?.arguments),
               result: "(запрос аппрува — одобри в CLI/Telegram)",
             },

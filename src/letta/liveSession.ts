@@ -53,6 +53,11 @@ export class LiveSessionManager {
     null;
   /** Conversation the current turn belongs to (P1 race guard). */
   private activeTurnConversationId: string | null = null;
+  /** Conversation currently shown in the UI (round-2 fix: the stream-end
+   *  refetch guard must compare against the VIEW, not the turn's own id —
+   *  the turn id equals its own conversation by construction, so comparing
+   *  against it was always true and stale history overwrote the new view). */
+  private currentViewConversationId: string | null = null;
 
   // Working state for the current conversation view
   private history: LettaMessage[] = [];
@@ -69,7 +74,10 @@ export class LiveSessionManager {
 
   /** Load (or reload) base history for a conversation, e.g. on open or refresh. */
   async loadHistory(conversationId: string, limit = 50): Promise<void> {
-    // P1: a conversation switch aborts any in-flight turn of the old one.
+    // Round-2 fix (agy P1): mark which conversation the UI is showing BEFORE
+    // anything async; stale turns compare against this.
+    this.currentViewConversationId = conversationId;
+    // A conversation switch aborts any in-flight turn of the old one.
     if (this.sessionConversationId !== conversationId) {
       if (this.activeTurnConversationId && this.activeTurnConversationId !== conversationId) {
         this.aborted = true;
@@ -78,6 +86,10 @@ export class LiveSessionManager {
       await this.closeSession();
     }
     const history = await this.adapter.getHistory(conversationId, limit);
+    // Another switch happened while we were fetching — drop stale data
+    // BEFORE emitting (round-2 agy P2: emit pushed stale rows into the
+    // store before the caller's own guard could run).
+    if (this.currentViewConversationId !== conversationId) return;
     this.history = history;
     this.emit();
   }
@@ -218,14 +230,15 @@ export class LiveSessionManager {
         toolCalls: {},
       };
       // Refetch authoritative history — only if the user stayed on this
-      // conversation (P1 race: A's refetch must not overwrite B's view).
-      if (this.activeTurnConversationId === conversationId) {
+      // conversation (compare against the VIEW id, not the turn's own —
+      // round-2 agy fix).
+      if (this.currentViewConversationId === conversationId) {
         this.history = await this.adapter.getHistory(conversationId, 50);
         this.emit();
       }
     } catch (e) {
       // Errors from a stale turn are dropped silently (conversation moved on).
-      if (this.activeTurnConversationId !== conversationId) return;
+      if (this.currentViewConversationId !== conversationId) return;
       this.turn = {
         ...idleState,
         phase: "error",

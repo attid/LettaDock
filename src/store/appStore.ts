@@ -443,10 +443,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const uploaded = await uploadFileMultipart(apiKey, sandboxId, file);
       L(`attachFile: uploaded → ${uploaded.path}`);
+      // Round-2 agy P2: keep the sandbox alive briefly so the file viewer
+      // (chip click) can fetch content; auto-terminate after a grace period.
+      setTimeout(() => {
+        void adapter.terminateSandbox(sandboxId).catch(() => {});
+      }, 10 * 60 * 1000); // 10 min
       return uploaded;
-    } finally {
-      // Fire-and-forget: sandbox not needed after upload completes.
+    } catch (e) {
       void adapter.terminateSandbox(sandboxId).catch(() => {});
+      throw e;
     }
   },
 

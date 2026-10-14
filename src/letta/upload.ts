@@ -12,6 +12,14 @@ export async function uploadFileMultipart(
   sandboxId: string,
   file: File,
 ): Promise<UploadedFile> {
+  // Round-2 agy P2: guard huge files — IPC serializes bytes as a JSON array,
+  // tens of MB would hang the bridge.
+  const MAX_BYTES = 20 * 1024 * 1024;
+  if (file.size > MAX_BYTES) {
+    throw new Error(
+      `файл ${(file.size / 1048576).toFixed(1)} МБ больше лимита ${MAX_BYTES / 1048576} МБ`,
+    );
+  }
   const { invoke } = await import("@tauri-apps/api/core");
   const buf = new Uint8Array(await file.arrayBuffer());
   const res = (await invoke("proxy_upload_file", {
