@@ -24,6 +24,14 @@ paperclip. Images → ImageContent (base64) sent with the message
 (SDK SendMessage = TextContent | ImageContent[]). Files → upload strategy
 TBD: Letta Cloud file API vs agent MemFS vs repositories. Depends on
 SESSION-CORS being fixed (sending must work first).
+Research in flight: official web UI internals (subagent task_4).
+
+### TARGET-1: execution target switcher (owner request 2026-10-14)
+Web UI has a control to pick where tool execution runs (cloud vs remote
+computer). LettaDock hardcodes the discovered online computer. Add a
+selector in the header: cloud sandbox ↔ ibook26 (any registered computer).
+Research in flight: subagent task_4 digging official UI source for the
+exact API calls.
 
 ## Sessions / Phase 3 follow-ups
 
