@@ -1,8 +1,14 @@
+import { useState } from "react";
 import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive } from "@assistant-ui/react";
 import type { TextMessagePartProps, ToolCallMessagePartProps } from "@assistant-ui/react";
 import { MarkdownText } from "./MarkdownText";
 import { SendHorizontal, Square, Wrench } from "lucide-react";
 import { useAppStore } from "../store/appStore";
+import {
+  fileToDataUrl,
+  prepareImage,
+  type PreparedImage,
+} from "./images";
 
 const UserMessage = () => (
   <MessagePrimitive.Root className="flex justify-end px-4 py-2">
@@ -47,8 +53,38 @@ const AssistantMessage = () => (
 
 const Composer = () => {
   const turnState = useAppStore((s) => s.turnState);
+  const sendMessage = useAppStore((s) => s.sendMessage);
+  const sendMessageWithImages = useAppStore((s) => s.sendMessageWithImages);
   const running = turnState.phase === "sending" || turnState.phase === "streaming";
   const error = turnState.phase === "error" ? turnState.error : undefined;
+  const [pendingImages, setPendingImages] = useState<PreparedImage[]>([]);
+
+  const addFromClipboard = async (e: React.ClipboardEvent) => {
+    const files = Array.from(e.clipboardData?.files ?? []).filter((f) =>
+      f.type.startsWith("image/"),
+    );
+    if (files.length === 0) return; // normal text paste proceeds untouched
+    e.preventDefault();
+    for (const f of files) {
+      try {
+        const dataUrl = await fileToDataUrl(f);
+        const prepared = await prepareImage(dataUrl);
+        setPendingImages((prev) => [...prev, prepared]);
+      } catch {
+        /* skip broken image */
+      }
+    }
+  };
+
+  const handleSend = async (text: string) => {
+    if (pendingImages.length > 0) {
+      const imgs = pendingImages.map((p) => p.base64);
+      setPendingImages([]);
+      await sendMessageWithImages(text, imgs);
+    } else {
+      await sendMessage(text);
+    }
+  };
 
   return (
     <div className="border-t bg-background/80 p-4">
@@ -57,10 +93,39 @@ const Composer = () => {
           {error}
         </div>
       )}
+      {pendingImages.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          {pendingImages.map((p, i) => (
+            <div
+              key={i}
+              className="group relative h-14 w-14 overflow-hidden rounded-md border"
+            >
+              <img
+                src={`data:${p.mediaType};base64,${p.base64}`}
+                alt={`#${i + 1}`}
+                className="h-full w-full object-cover"
+              />
+              <button
+                onClick={() =>
+                  setPendingImages((prev) => prev.filter((_, j) => j !== i))
+                }
+                className="absolute inset-0 hidden items-center justify-center bg-black/60 text-xs text-white group-hover:flex"
+              >
+                убрать
+              </button>
+            </div>
+          ))}
+          <span className="text-xs text-muted-foreground">
+            {pendingImages.length} изображени(й) — Ctrl+V ещё, клик по миниатюре
+            — убрать
+          </span>
+        </div>
+      )}
       <ComposerPrimitive.Root className="flex items-end gap-2 rounded-lg border bg-card p-2 focus-within:ring-1 focus-within:ring-ring">
         <ComposerPrimitive.Input
           rows={1}
-          placeholder="Написать сообщение…"
+          placeholder="Написать сообщение… (Ctrl+V вставит картинку)"
+          onPaste={addFromClipboard}
           className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1 text-sm outline-none placeholder:text-muted-foreground"
         />
         {running ? (
@@ -68,7 +133,16 @@ const Composer = () => {
             <Square className="h-4 w-4" />
           </ComposerPrimitive.Cancel>
         ) : (
-          <ComposerPrimitive.Send className="rounded-md bg-primary p-2 text-primary-foreground disabled:opacity-50">
+          <ComposerPrimitive.Send
+            className="rounded-md bg-primary p-2 text-primary-foreground disabled:opacity-50"
+            onClick={async () => {
+              const input = document.querySelector<HTMLTextAreaElement>(
+                "[data-composer-input] textarea, textarea",
+              );
+              const text = input?.value ?? "";
+              await handleSend(text);
+            }}
+          >
             <SendHorizontal className="h-4 w-4" />
           </ComposerPrimitive.Send>
         )}

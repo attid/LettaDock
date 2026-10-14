@@ -33,6 +33,13 @@ const idleState: TurnState = {
   toolCalls: {},
 };
 
+export type ContentPart =
+  | { type: "text"; text: string }
+  | {
+      type: "image";
+      source: { type: "base64"; media_type: string; data: string };
+    };
+
 export class LiveSessionManager {
   private adapter: CloudLettaAdapter;
   private handlers: ChatEventHandlers;
@@ -95,6 +102,31 @@ export class LiveSessionManager {
    * Appends the optimistic user message immediately.
    */
   async send(conversationId: string, text: string): Promise<void> {
+    await this.sendInternal(conversationId, [{ type: "text", text }]);
+  }
+
+  /** Send text + base64 images (raw base64, no data: prefix). */
+  async sendWithImages(
+    conversationId: string,
+    text: string,
+    images: string[],
+  ): Promise<void> {
+    const parts: ContentPart[] = [];
+    if (text) parts.push({ type: "text", text });
+    for (const img of images) {
+      const mediaType = sniffMediaType(img);
+      parts.push({
+        type: "image",
+        source: { type: "base64", media_type: mediaType, data: img },
+      });
+    }
+    await this.sendInternal(conversationId, parts);
+  }
+
+  private async sendInternal(
+    conversationId: string,
+    contentParts: ContentPart[],
+  ): Promise<void> {
     if (this.turn.phase === "sending" || this.turn.phase === "streaming") {
       return; // one turn at a time in the UI
     }
@@ -113,20 +145,34 @@ export class LiveSessionManager {
         this.sessionConversationId = conversationId;
       }
 
+      const textParts = contentParts.filter(
+        (p): p is { type: "text"; text: string } => p.type === "text",
+      );
+      const imageCount = contentParts.filter(
+        (p): p is { type: "image"; source: { type: "base64"; media_type: string; data: string } } =>
+          p.type === "image",
+      ).length;
+      const displayText =
+        textParts.map((p) => p.text).join("\n") +
+        (imageCount > 0 ? ` [изображений: ${imageCount}]` : "");
       this.history = [
         ...this.history,
         {
           id: `local-${Date.now()}`,
           date: new Date().toISOString(),
           messageType: "user_message",
-          content: text,
+          content: displayText,
           raw: { optimistic: true },
         },
       ];
       this.turn = { ...this.turn, phase: "streaming" };
       this.emit();
 
-      await this.session.send(text);
+      await this.session.send(
+        contentParts.length === 1 && contentParts[0].type === "text"
+          ? contentParts[0].text
+          : contentParts,
+      );
       for await (const msg of this.session.stream()) {
         if (this.aborted) break;
         this.applyStreamEvent(msg);
@@ -246,4 +292,17 @@ export class LiveSessionManager {
 
 function truncateStr(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) + "…" : s;
+}
+
+/** Sniff media type from a base64 data-URI prefix or magic bytes. */
+function sniffMediaType(b64: string): string {
+  // data:image/png;base64,.... → image/png
+  const m = /^data:(image\/[a-z+]+);base64,/.exec(b64);
+  if (m) return m[1];
+  const head = b64.slice(0, 20);
+  if (head.startsWith("iVBOR")) return "image/png";
+  if (head.startsWith("/9j/")) return "image/jpeg";
+  if (head.startsWith("R0lGOD")) return "image/gif";
+  if (head.startsWith("UklGR")) return "image/webp";
+  return "image/png";
 }
