@@ -21,7 +21,9 @@ function ConnectDialog({ onClose }: { onClose: () => void }) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const name = String(fd.get("name") || "Letta Cloud").trim();
-    const apiKey = String(fd.get("apiKey") || "").trim();
+    // User should never think about whitespace: strip ALL whitespace anywhere
+    // in the pasted key (copied keys sometimes carry wrapped newlines).
+    const apiKey = String(fd.get("apiKey") || "").replace(/\s+/g, "");
     if (!apiKey) return;
     addProfile(name, "cloud", apiKey);
     onClose();

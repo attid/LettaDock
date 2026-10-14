@@ -13,6 +13,20 @@ pnpm install
 pnpm tauri dev
 ```
 
+## Status: Phase 3 — live conversation — DONE
+
+- [x] Phase 2: read-only cloud connectivity (agents, conversations, history)
+- [x] Phase 3: send + streaming + abort via hosted relay sessions
+  - sessions run on the owner's registered remote computer (auto-discovered
+    via computers.list(), e.g. ibook26) — NOT managed sandboxes
+  - SDK portable entry (`/client`), webSocketAuth: query, lazy chunk
+  - key resolution: entered key this session, else ~/.letta/settings.json
+    env.LETTA_API_KEY via Tauri command (read_local_letta_key)
+- Known limitation: messages sent from other clients (CLI/Telegram) do not
+  arrive live; visible after reopening the conversation.
+
+Phase 3 STOP — awaiting approval for Phase 4 (approvals, file viewer, diffs).
+
 ## Status: Phase 1 — runnable shell (mock data) — DONE
 
 - [x] Tauri 2 + Vite + React + TS skeleton

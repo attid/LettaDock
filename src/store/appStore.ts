@@ -83,12 +83,35 @@ interface AppState {
   refreshConversation: () => Promise<void>;
 }
 
-// In-memory session keys, NOT persisted.
+// In-memory session keys, NOT persisted. BUT: to avoid re-entering the key
+// after every restart in the dev phase, the app resolves the key in this order:
+//   1. a key entered this session (sessionKeys map)
+//   2. the local letta-code settings.json env LETTA_API_KEY (same file the
+//      user's letta CLI uses; read via Tauri fs scope in Phase 5, direct
+//      fetch through the dev server proxy is not available in webview, so we
+//      read it through a tiny Tauri command in src-tauri)
+// Secure storage migration is still Phase 5 (spec).
 const sessionKeys = new Map<string, string>();
 const adapters = new Map<string, CloudLettaAdapter>();
 // One live manager for the currently open conversation.
 let live: LiveSessionManager | null = null;
 let liveConversationId: string | null = null;
+
+async function resolveKey(profileId: string): Promise<string | undefined> {
+  const local = sessionKeys.get(profileId);
+  if (local) return local;
+  try {
+    const { readLocalLettaKey } = await import("../letta/localKey");
+    const key = await readLocalLettaKey();
+    if (key) {
+      sessionKeys.set(profileId, key);
+      return key;
+    }
+  } catch {
+    /* no local key available */
+  }
+  return undefined;
+}
 
 export const useAppStore = create<AppState>((set, get) => ({
   profiles: loadProfiles(),
@@ -130,14 +153,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   connect: async (profileId) => {
     const profile = get().profiles.find((p) => p.id === profileId);
     if (!profile) return;
-    const apiKey = sessionKeys.get(profileId);
+    const apiKey = await resolveKey(profileId);
     if (!apiKey) {
       set((s) => ({
         connectionStatus: {
           ...s.connectionStatus,
           [profileId]: {
             state: "error",
-            error: "Ключ сессии потерян (перезапуск) — добавь профиль заново",
+            error:
+              "Ключ не найден: вставь его через «+» (или пусть в ~/.letta/settings.json будет env.LETTA_API_KEY)",
           },
         },
       }));
@@ -171,23 +195,21 @@ export const useAppStore = create<AppState>((set, get) => ({
           ...s.connectionStatus,
           [profileId]: {
             state: "connected",
-            error: computer ? undefined : "Нет онлайн-computer — сессии не открыть",
+            // Not fatal: browsing works; only sessions need a computer.
+            error: computer
+              ? undefined
+              : "Нет онлайн-computer — просмотр работает, сессии (отправка) нет",
           },
         },
       }));
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
-      // SDK errors carry .status for HTTP failures; add a hint for 401.
-      const hint =
-        (err as { status?: number }).status === 401
-          ? " (401: ключ не принят — проверь, что скопирован целиком, без пробелов и переносов)"
-          : "";
       set((s) => ({
         connectionStatus: {
           ...s.connectionStatus,
           [profileId]: {
             state: "error",
-            error: (err.message || String(e)).slice(0, 300) + hint,
+            error: (err.message || String(e)).slice(0, 300),
           },
         },
       }));

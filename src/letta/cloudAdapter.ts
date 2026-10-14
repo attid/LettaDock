@@ -103,7 +103,10 @@ export class CloudLettaAdapter implements LettaAdapter {
     try {
       const client = await this.sdk();
       const items = await client.computers.list();
-      const arr = Array.isArray(items) ? items : (items.items ?? []);
+      // Shape verified live: { computers: [...] } — also accept array/items.
+      const arr = Array.isArray(items)
+        ? items
+        : (items.computers ?? items.items ?? []);
       const online = arr.find(
         (c: { connectionId?: string | null }) => c.connectionId,
       );
