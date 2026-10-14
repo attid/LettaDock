@@ -13,19 +13,30 @@ pnpm install
 pnpm tauri dev
 ```
 
-## Status: Phase 3 — live conversation — DONE
+## Status: Phase 3 — live conversation — DONE (owner-confirmed 2026-10-14)
 
 - [x] Phase 2: read-only cloud connectivity (agents, conversations, history)
 - [x] Phase 3: send + streaming + abort via hosted relay sessions
   - sessions run on the owner's registered remote computer (auto-discovered
     via computers.list(), e.g. ibook26) — NOT managed sandboxes
-  - SDK portable entry (`/client`), webSocketAuth: query, lazy chunk
+  - ALL SDK HTTP goes through the local Rust proxy (owner decision: nothing
+    leaves the frontend directly; api.letta.com lacks CORS on most routes)
+  - connectionId resolved fresh per session (rotates on device reconnect)
   - key resolution: entered key this session, else ~/.letta/settings.json
     env.LETTA_API_KEY via Tauri command (read_local_letta_key)
+- [x] Message rendering: chronological order (API is DESC), user messages
+  visible (stringified content parts parsed), <system-reminder> blocks
+  stripped (human text only), conversation titles from summary
+- [x] Routing shown in UI: data = api.letta.com (via proxy), execution =
+  discovered computer (ibook26)
 - Known limitation: messages sent from other clients (CLI/Telegram) do not
   arrive live; visible after reopening the conversation.
 
-Phase 3 STOP — awaiting approval for Phase 4 (approvals, file viewer, diffs).
+Debug log: every significant step → /tmp/lettadock-ui.log.
+
+Next: ATTACH-1 (Ctrl+V images/attachments) + TARGET-1 (execution switcher)
+after subagent research on official UI internals lands; then Phase 4
+approvals/files/diffs by separate GO.
 
 ## Status: Phase 1 — runnable shell (mock data) — DONE
 
