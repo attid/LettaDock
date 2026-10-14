@@ -80,6 +80,15 @@ interface AppState {
   // Phase 3 actions
   sendMessage: (text: string) => Promise<void>;
   sendMessageWithImages: (text: string, images: string[]) => Promise<void>;
+  sendMessageWithParts: (
+    parts: Array<
+      | { type: "text"; text: string }
+      | {
+          type: "image";
+          source: { type: "base64"; media_type: string; data: string };
+        }
+    >,
+  ) => Promise<void>;
   abortTurn: () => Promise<void>;
   refreshConversation: () => Promise<void>;
 }
@@ -349,6 +358,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const conversationId = get().selectedConversationId;
     if (!conversationId || !live) return;
     await live.sendWithImages(conversationId, text, images);
+  },
+
+  sendMessageWithParts: async (parts) => {
+    const conversationId = get().selectedConversationId;
+    if (!conversationId || !live) return;
+    await live.sendParts(conversationId, parts);
   },
 
   abortTurn: async () => {

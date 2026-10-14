@@ -4,6 +4,7 @@ import type { TextMessagePartProps, ToolCallMessagePartProps } from "@assistant-
 import { MarkdownText } from "./MarkdownText";
 import { SendHorizontal, Square, Wrench } from "lucide-react";
 import { useAppStore } from "../store/appStore";
+import type { ContentPart } from "../letta/liveSession";
 import {
   prepareImage,
   type PreparedImage,
@@ -53,7 +54,7 @@ const AssistantMessage = () => (
 const Composer = () => {
   const turnState = useAppStore((s) => s.turnState);
   const sendMessage = useAppStore((s) => s.sendMessage);
-  const sendMessageWithImages = useAppStore((s) => s.sendMessageWithImages);
+  const sendMessageWithParts = useAppStore((s) => s.sendMessageWithParts);
   const running = turnState.phase === "sending" || turnState.phase === "streaming";
   const error = turnState.phase === "error" ? turnState.error : undefined;
   const [pendingImages, setPendingImages] = useState<PreparedImage[]>([]);
@@ -62,8 +63,17 @@ const Composer = () => {
   // (log-verified: kinds=[] even with image/png in the system clipboard).
   // So Ctrl+V here reads the clipboard directly via Rust and we intercept
   // the keydown before the (useless) paste event fires.
+  //
+  // Images insert a [N] marker at the cursor, TUI-style: user writes
+  // "кнопка [] а тут буква []" interleaved with markers; on send the text
+  // is split on markers into alternating text/image content parts.
   const onCtrlV = (e: React.KeyboardEvent) => {
-    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "v") return;
+    // Layout-independent: e.key follows the active layout (ru: 'ъ'),
+    // e.code is the physical key (KeyV) — use code, per owner feedback.
+    const isPasteCombo =
+      (e.ctrlKey || e.metaKey) &&
+      (e.code === "KeyV" || e.key.toLowerCase() === "v");
+    if (!isPasteCombo) return;
     // Let text-only pastes work natively? No — clipboardData is broken here
     // anyway; we own paste entirely: read image, else re-insert text.
     e.preventDefault();
@@ -73,10 +83,12 @@ const Composer = () => {
         const b64 = await readClipboardImage();
         if (b64) {
           const prepared = await prepareImage(`data:image/png;base64,${b64}`);
+          const markerIndex = pendingImages.length + 1;
           setPendingImages((prev) => [...prev, prepared]);
+          insertAtCursor(`[${markerIndex}]`);
           void import("../letta/localKey").then(({ appendDebugLog }) =>
             appendDebugLog(
-              `[paste] rust clipboard → image ${prepared.width}x${prepared.height} b64len=${prepared.base64.length}`,
+              `[paste] rust clipboard → image ${prepared.width}x${prepared.height} b64len=${prepared.base64.length} marker=[${markerIndex}]`,
             ).catch(() => {}),
           );
           return;
@@ -85,16 +97,7 @@ const Composer = () => {
         const { invoke } = await import("@tauri-apps/api/core");
         const text = await invoke<string | null>("read_clipboard_text");
         if (text) {
-          const el = document.activeElement as HTMLTextAreaElement | null;
-          if (el && el.tagName === "TEXTAREA") {
-            const start = el.selectionStart ?? el.value.length;
-            const end = el.selectionEnd ?? start;
-            el.value =
-              el.value.slice(0, start) + text + el.value.slice(end);
-            const pos = start + text.length;
-            el.setSelectionRange(pos, pos);
-            el.dispatchEvent(new Event("input", { bubbles: true }));
-          }
+          insertAtCursor(text);
         }
       } catch (err) {
         void import("../letta/localKey").then(({ appendDebugLog }) =>
@@ -102,6 +105,21 @@ const Composer = () => {
         );
       }
     })();
+  };
+
+  /** Insert text at the caret of the focused textarea and notify React. */
+  const insertAtCursor = (text: string) => {
+    const el = document.querySelector<HTMLTextAreaElement>(
+      "[data-lettadock-composer]",
+    );
+    if (!el) return;
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? start;
+    el.value = el.value.slice(0, start) + text + el.value.slice(end);
+    const pos = start + text.length;
+    el.setSelectionRange(pos, pos);
+    el.focus();
+    el.dispatchEvent(new Event("input", { bubbles: true }));
   };
 
   const addFromClipboard = (e: React.ClipboardEvent) => {
@@ -115,15 +133,49 @@ const Composer = () => {
   };
 
   const handleSend = async (text: string) => {
-    if (pendingImages.length > 0) {
-      const imgs = pendingImages.map((p) => p.base64);
-      setPendingImages([]);
-      await sendMessageWithImages(text, imgs);
-    } else {
+    if (pendingImages.length === 0) {
       await sendMessage(text);
+      return;
+    }
+    // Split on [N] markers → alternating text/image parts, TUI-style.
+    // "кнопка [1] а тут буква [2]" with images 1,2 → text,img1,text,img2.
+    // Text without any marker still works (images appended at the end).
+    const parts: ContentPart[] = [];    const chunks = text.split(/\[(\d+)\]/g);
+    // chunks = [pre, '1', mid, '2', post, ...] — odd indexes are markers.
+    let usedAny = false;
+    for (let i = 0; i < chunks.length; i++) {
+      if (i % 2 === 1) {
+        const idx = parseInt(chunks[i], 10) - 1;
+        const img = pendingImages[idx];
+        if (img) {
+          parts.push({
+            type: "image",
+            source: { type: "base64", media_type: "image/png", data: img.base64 },
+          });
+          usedAny = true;
+        } else {
+          parts.push({ type: "text", text: `[${chunks[i]}]` });
+        }
+      } else if (chunks[i]) {
+        parts.push({ type: "text", text: chunks[i] });
+      }
+    }
+    // Images never referenced by a marker go to the end.
+    if (!usedAny) {
+      for (const img of pendingImages) {
+        parts.push({
+          type: "image",
+          source: { type: "base64", media_type: "image/png", data: img.base64 },
+        });
+      }
+    }
+    setPendingImages([]);
+    if (parts.length === 1 && parts[0].type === "text") {
+      await sendMessage(parts[0].text);
+    } else {
+      await sendMessageWithParts(parts);
     }
   };
-
   return (
     <div className="border-t bg-background/80 p-4">
       {error && (
@@ -162,7 +214,8 @@ const Composer = () => {
       <ComposerPrimitive.Root className="flex items-end gap-2 rounded-lg border bg-card p-2 focus-within:ring-1 focus-within:ring-ring">
         <ComposerPrimitive.Input
           rows={1}
-          placeholder="Написать сообщение… (Ctrl+V вставит картинку)"
+          data-lettadock-composer
+          placeholder="Написать сообщение… (Ctrl+V вставит картинку маркером [N])"
           onKeyDown={onCtrlV}
           onPaste={addFromClipboard}
           className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1 text-sm outline-none placeholder:text-muted-foreground"

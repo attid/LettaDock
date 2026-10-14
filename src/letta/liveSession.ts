@@ -123,6 +123,14 @@ export class LiveSessionManager {
     await this.sendInternal(conversationId, parts);
   }
 
+  /** Send pre-built content parts (marker-interleaved text/images). */
+  async sendParts(
+    conversationId: string,
+    parts: ContentPart[],
+  ): Promise<void> {
+    await this.sendInternal(conversationId, parts);
+  }
+
   private async sendInternal(
     conversationId: string,
     contentParts: ContentPart[],
