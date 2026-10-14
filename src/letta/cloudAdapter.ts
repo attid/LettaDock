@@ -99,14 +99,16 @@ export class CloudLettaAdapter implements LettaAdapter {
       })) as Array<{
         id: string;
         name?: string;
+        summary?: string;
         created_at?: string;
         updated_at?: string;
       }>;
       await log(`listConversations: OK, ${arr.length} conversations`);
+      // Cloud conversations have name=None; API-derived title from summary.
       return arr.map((c) => ({
         id: c.id,
         agentId,
-        name: c.name ?? "",
+        name: c.name || c.summary?.slice(0, 60) || c.id,
         createdAt: c.created_at ?? "",
         lastMessageAt: c.updated_at,
       }));
