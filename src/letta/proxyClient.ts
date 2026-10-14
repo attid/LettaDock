@@ -11,6 +11,52 @@ interface ProxyResponse {
   body: string;
 }
 
+export type ProxiedFetch = (url: string, init?: RequestInit) => Promise<Response>;
+
+/**
+ * Build a fetch() that routes through the Tauri Rust proxy.
+ * Used as the SDK's custom fetch so session setup calls hit api.letta.com
+ * without browser CORS rules (server omits ACAO on most endpoints).
+ * Only https://api.letta.com URLs are proxied; everything else goes direct.
+ */
+export function createProxiedFetch(apiKey: string): ProxiedFetch {
+  return async (url, init) => {
+    const target = new URL(url, globalThis.location?.href);
+    if (target.origin !== "https://api.letta.com") {
+      // Non-API (unlikely here): go direct.
+      return fetch(url, init);
+    }
+    const method = (init?.method ?? "GET").toUpperCase();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let body: any = null;
+    if (init?.body != null) {
+      if (typeof init.body === "string") {
+        try {
+          body = JSON.parse(init.body);
+        } catch {
+          body = { raw: init.body };
+        }
+      } else {
+        body = init.body;
+      }
+    }
+    const { invoke } = await import("@tauri-apps/api/core");
+    const res = (await invoke("proxy_letta_api", {
+      req: {
+        method,
+        path: target.pathname,
+        query: Object.fromEntries(target.searchParams.entries()),
+        apiKey,
+        body,
+      },
+    })) as ProxyResponse;
+    return new Response(res.body, {
+      status: res.status,
+      headers: { "content-type": "application/json" },
+    });
+  };
+}
+
 export class ProxiedHttpError extends Error {
   status: number;
   constructor(status: number, body: string) {

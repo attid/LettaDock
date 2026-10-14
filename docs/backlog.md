@@ -18,7 +18,23 @@ Offer one-click «очистить нерабочие профили» instead o
 ### UX-3: Connection error surfaced better
 Error banner is small; add retry button next to it (re-run connect()).
 
+### ATTACH-1: Ctrl+V paste images + file attachments (owner request 2026-10-14)
+Composer must accept Ctrl+V (images from clipboard, file paste) and a
+paperclip. Images → ImageContent (base64) sent with the message
+(SDK SendMessage = TextContent | ImageContent[]). Files → upload strategy
+TBD: Letta Cloud file API vs agent MemFS vs repositories. Depends on
+SESSION-CORS being fixed (sending must work first).
+
 ## Sessions / Phase 3 follow-ups
+
+### SESSION-CORS (blocking, log-verified 2026-10-14)
+Session SDK client fetches api.letta.com directly; CORS headers exist only
+on /v1/agents. /v1/conversations/{id}, /v1/environments/{...},
+/repositories are blocked in the webview → session ready() = "Connection
+error" in browser, fine in Node. WS relay itself opens OK (verified).
+Options: (a) route ALL session HTTP through the Rust proxy by injecting a
+custom fetch into createCloudClient; (b) re-implement session on the
+WebSocket layer directly (relay WS works). Leaning (a) — smaller surface.
 
 ### S-1: Live updates from other clients
 Messages sent from CLI/Telegram don't appear in an open conversation.

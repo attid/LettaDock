@@ -59,13 +59,19 @@ export class CloudLettaAdapter implements LettaAdapter {
       this.sdkPromise ??= (async () => {
         await log("sdk: importing @letta-ai/letta-agent-sdk/client…");
         const mod = await import("@letta-ai/letta-agent-sdk/client");
-        await log("sdk: module imported, constructing client…");
+        const { createProxiedFetch } = await import("./proxyClient");
+        // ALL SDK HTTP goes through the Rust proxy (owner decision: nothing
+        // leaves the frontend directly — api.letta.com lacks CORS headers on
+        // most endpoints). WebSocket relays stay direct (no CORS on WS).
+        const proxiedFetch = createProxiedFetch(this.apiKey);
+        await log("sdk: module imported, constructing client with proxied fetch…");
         this.client = new mod.LettaAgentClient({
           backend: "cloud",
           apiKey: this.apiKey,
           webSocketAuth: "query" as const,
+          fetch: proxiedFetch as unknown as typeof fetch,
         });
-        await log("sdk: client constructed");
+        await log("sdk: client constructed (proxied)");
         return this.client;
       })();
       return this.sdkPromise;
