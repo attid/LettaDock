@@ -80,7 +80,7 @@ pub struct UploadRequest {
 /// proxy principle: the webview never talks to api.letta.com directly.
 #[tauri::command]
 pub async fn proxy_upload_file(req: UploadRequest) -> Result<ProxyResponse, String> {
-    let part = reqwest::blocking::Part::bytes(req.bytes)
+    let part = reqwest::blocking::multipart::Part::bytes(req.bytes)
         .file_name(req.file_name.clone())
         .mime_str(&req.mime_type)
         .map_err(|e| e.to_string())?;
