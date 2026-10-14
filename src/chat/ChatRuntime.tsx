@@ -146,7 +146,8 @@ const EMPTY_PLACEHOLDER: ThreadMessageLike[] = [
 export function ChatRuntime({ children }: { children: ReactNode }) {
   const liveMessages = useAppStore((s) => s.liveMessages);
   const loading = useAppStore((s) => s.historyLoading);
-  const turnState = useAppStore((s) => s.turnState);
+  const turnPhase = useAppStore((s) => s.turnState.phase);
+  const turnError = useAppStore((s) => s.turnState.error);
   const sendMessage = useAppStore((s) => s.sendMessage);
   const abortTurn = useAppStore((s) => s.abortTurn);
 
@@ -156,23 +157,36 @@ export function ChatRuntime({ children }: { children: ReactNode }) {
     return toThreadMessages(liveMessages);
   }, [liveMessages, loading]);
 
-  const running = turnState.phase === "sending" || turnState.phase === "streaming";
+  // Primitives: only the phase string (stable identity), not a new object —
+  // useExternalStoreRuntime resubscribes/updates when its config object
+  // changes identity, and a fresh `turnState` object per store update was
+  // causing an update loop (Maximum update depth exceeded).
+  const running = turnPhase === "sending" || turnPhase === "streaming";
+  const onCancel = useMemo(
+    () =>
+      running
+        ? async () => {
+            await abortTurn();
+          }
+        : undefined,
+    [running, abortTurn],
+  );
+  const onNew = useMemo(
+    () => async (message: { content: ReadonlyArray<{ type: string; text?: string }> }) => {
+      const textPart = message.content.find((p) => p.type === "text");
+      const text = textPart?.type === "text" ? (textPart.text ?? "") : "";
+      await sendMessage(text);
+    },
+    [sendMessage],
+  );
+  void turnError;
 
   const runtime = useExternalStoreRuntime({
     messages,
     isRunning: running,
-    isDisabled: !liveMessages || liveMessages.length === 0 ? false : false,
     convertMessage: (m) => m,
-    onCancel: running
-      ? async () => {
-          await abortTurn();
-        }
-      : undefined,
-    onNew: async (message) => {
-      const textPart = message.content.find((p) => p.type === "text");
-      const text = textPart?.type === "text" ? textPart.text : "";
-      await sendMessage(text);
-    },
+    onCancel,
+    onNew,
   });
 
   return (

@@ -204,7 +204,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Discover online computer once, use it for sessions.
       const computer = await adapter.findOnlineComputer();
       L(`connect: online computer = ${computer ?? "NONE"}`);
-      if (computer && !profile.computerName) {
+      if (computer && profile.computerName !== computer) {
+        // Always refresh: old profiles may hold a stale deviceId instead of
+        // the human name, and the online computer can legitimately change.
         const updated = {
           ...profile,
           computerName: computer,
