@@ -12,6 +12,13 @@ CreateSessionOptions + session.changeDeviceState({cwd}) для живой сес
 UI: селектор рядом с исполнением в шапке. Пер-диалог, как TARGET-1.
 НЕ ДЕЛАТЬ ДО КОМАНДЫ.
 
+### PERM-1: настройки привилегий как в PWA (owner request 2026-10-14)
+Permission mode (standard/acceptEdits/unrestricted/strict) и управление
+тулами на диалог. SDK: permissionMode в CreateSessionOptions +
+changeDeviceState({permissionMode}) для живой сессии. UI: рядом с
+исполнением/cwd. Сейчас всё на дефолтах агента — управления нет.
+НЕ ДЕЛАТЬ ДО КОМАНДЫ.
+
 ### UX-2: копировать сообщение (owner request 2026-10-14)
 Кнопка на сообщении — текст в буфер.
 
