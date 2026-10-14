@@ -13,6 +13,21 @@ pnpm install
 pnpm tauri dev
 ```
 
+## Stable install (не мешает дев-копии)
+
+```bash
+pnpm tauri build
+sudo dpkg -i src-tauri/target/release/bundle/deb/LettaDock_0.1.0_amd64.deb
+```
+
+- стабильная версия ставится системно (меню COSMIC, `lettadock` в PATH)
+- дев-копия (`pnpm tauri dev`, порт 1420) живёт параллельно, конфликта нет
+- ключ API обе версии читают из `~/.letta/settings.json` (общий)
+- localStorage у них раздельный — профили не переносятся автоматически
+- артефакты: deb (3.8MB), rpm, AppImage, бинарник 8.1MB (release, stripped)
+
+Для обновления стабла: `pnpm tauri build && sudo dpkg -i …deb`.
+
 ## Status: Phase 3 — live conversation — DONE (owner-confirmed 2026-10-14)
 
 - [x] Phase 2: read-only cloud connectivity (agents, conversations, history)
