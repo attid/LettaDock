@@ -20,11 +20,18 @@ function ConnBadge() {
         : status?.state === "connecting"
           ? "bg-amber-500 animate-pulse"
           : "bg-zinc-600";
+  // Routing explanation: API всегда облако; исполнение (tools) — на computer.
+  const route =
+    status?.state === "connected"
+      ? profile.computerName
+        ? `облако · исполняет ${profile.computerName}`
+        : "облако · нет компьютера для исполнения"
+      : (status?.state ?? "offline");
   return (
     <>
       <span className={`h-1.5 w-1.5 rounded-full ${color}`} />
       <span>
-        {profile.name} · {status?.state ?? "disconnected"}
+        {profile.name} · {route}
       </span>
     </>
   );

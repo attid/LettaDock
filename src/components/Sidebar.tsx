@@ -258,8 +258,18 @@ export function Sidebar() {
         </div>
       </div>
 
-      <div className="border-t p-3 text-xs text-muted-foreground">
-        Phase 2 · read-only, отправка сообщений отключена
+      <div className="border-t p-3 text-xs text-muted-foreground leading-relaxed">
+        <div>
+          данные: <span className="text-foreground">api.letta.com</span> (через
+          локальный прокси)
+        </div>
+        <div>
+          исполнение:{" "}
+          <span className="text-foreground">
+            {profiles.find((p) => p.id === selectedProfileId)?.computerName ??
+              "—"}
+          </span>
+        </div>
       </div>
 
       {dialogOpen && <ConnectDialog onClose={() => setDialogOpen(false)} />}
