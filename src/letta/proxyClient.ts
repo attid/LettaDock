@@ -110,4 +110,16 @@ export class LettaProxyClient {
     const r = res as { connections?: unknown[] } | unknown[];
     return Array.isArray(r) ? r : (r.connections ?? []);
   }
+
+  /** Fetch a fresh connection record by device id (connectionId rotates on reconnect). */
+  async getDeviceConnection(deviceId: string): Promise<{
+    connectionId?: string;
+    currentMode?: string;
+  } | null> {
+    const arr = await this.listEnvironments({});
+    const rec = arr.find(
+      (c) => (c as { deviceId?: string }).deviceId === deviceId,
+    ) as { connectionId?: string; currentMode?: string } | undefined;
+    return rec ?? null;
+  }
 }

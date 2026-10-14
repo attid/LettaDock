@@ -40,6 +40,8 @@ export class CloudLettaAdapter implements LettaAdapter {
   private client: SdkClient | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private sdkPromise: Promise<any> | null = null;
+  /** Stable device id of the online computer (connectionId rotates). */
+  private lastOnlineDeviceId: string | null = null;
 
   constructor(profile: ServerProfile, apiKey: string) {
     this.profile = profile;
@@ -148,15 +150,24 @@ export class CloudLettaAdapter implements LettaAdapter {
         name?: string;
         deviceId?: string;
         connectionId?: string | null;
+        connectionName?: string;
       }>;
       await log(`findOnlineComputer: ${arr.length} connections`);
       for (const c of arr) {
         await log(
-          `findOnlineComputer: - ${c.name ?? "?"} connectionId=${c.connectionId ?? "NULL"}`,
+          `findOnlineComputer: - ${c.connectionName ?? c.name ?? "?"} deviceId=${c.deviceId ?? "?"} connectionId=${c.connectionId ?? "NULL"}`,
         );
       }
       const online = arr.find((c) => c.connectionId);
-      const name = online ? (online.name ?? online.deviceId ?? null) : null;
+      if (!online) {
+        await log("findOnlineComputer: result=null (no online)");
+        return null;
+      }
+      // Prefer connectionName ("ibook26"); fall back to deviceId which the
+      // session layer can resolve back to a fresh connection.
+      const name =
+        online.connectionName ?? online.name ?? online.deviceId ?? null;
+      this.lastOnlineDeviceId = online.deviceId ?? null;
       await log(`findOnlineComputer: result=${name ?? "null"}`);
       return name;
     } catch (e) {
@@ -171,9 +182,28 @@ export class CloudLettaAdapter implements LettaAdapter {
     const client = await this.sdk();
     const options: Record<string, unknown> = {};
     const computer = computerName ?? this.profile.computerName;
-    if (computer) options.computer = { name: computer };
+    // connectionId ROTATES on device reconnect (log-verified: session ready()
+    // died with 'Connection error' on a stale conn-… id; the fresh one from a
+    // new /v1/environments fetch works). Resolve by deviceId immediately
+    // before opening; deviceId is stable.
+    if (computer && this.lastOnlineDeviceId) {
+      const fresh = await this.proxy.getDeviceConnection(
+        this.lastOnlineDeviceId,
+      );
+      if (fresh?.connectionId) {
+        options.computer = { connectionId: fresh.connectionId };
+        await log(
+          `openSession: using fresh connectionId=${fresh.connectionId} (device=${this.lastOnlineDeviceId})`,
+        );
+      } else {
+        options.computer = { name: computer };
+        await log(`openSession: no fresh connection — falling back to name=${computer}`);
+      }
+    } else if (computer) {
+      options.computer = { name: computer };
+    }
     await log(
-      `openSession: conv=${conversationId} computer=${computer ?? "none/managed-sandbox"}…`,
+      `openSession: conv=${conversationId} computer=${JSON.stringify(options.computer ?? null)}…`,
     );
     const session = client.resumeSession(conversationId, options);
     try {
