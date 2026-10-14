@@ -68,6 +68,13 @@ interface AppState {
   historyLoading: boolean;
   turnState: TurnState;
 
+  // TARGET-1: execution target per conversation (cloud | computer)
+  targetsByConversation: Record<string, ConversationTarget>;
+  setConversationTarget: (
+    conversationId: string,
+    target: ConversationTarget,
+  ) => void;
+
   // Selection
   selectedProfileId: string | null;
   selectedAgentId: string | null;
@@ -91,13 +98,6 @@ interface AppState {
   ) => Promise<void>;
   abortTurn: () => Promise<void>;
   refreshConversation: () => Promise<void>;
-
-  // TARGET-1: per-conversation execution target
-  /** "cloud" = managed sandbox; anything else = computer name/deviceId. */
-  setConversationTarget: (
-    conversationId: string,
-    target: "cloud" | { deviceId: string; name: string },
-  ) => void;
 }
 
 // Per-conversation execution target (session-scoped, SDK-verified:
