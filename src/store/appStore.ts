@@ -7,6 +7,7 @@ import type {
   ServerProfile,
 } from "../letta/types";
 import { CloudLettaAdapter } from "../letta/cloudAdapter";
+import { LiveSessionManager, type TurnState } from "../letta/liveSession";
 
 // Profile persistence: localStorage for non-secret profile metadata only.
 // API keys are NEVER persisted here (spec: no plaintext secrets); in the dev
@@ -34,6 +35,10 @@ function saveProfiles(profiles: ServerProfile[]) {
   localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
 }
 
+function saveSelection(sel: StoredSelection) {
+  localStorage.setItem(LAST_SELECTION_KEY, JSON.stringify(sel));
+}
+
 function loadSelection(): StoredSelection {
   try {
     const raw = localStorage.getItem(LAST_SELECTION_KEY);
@@ -47,19 +52,21 @@ function loadSelection(): StoredSelection {
 interface AppState {
   // Profiles
   profiles: ServerProfile[];
-  addProfile: (name: string, kind: "cloud", apiKey: string) => void;
+  addProfile: (name: string, kind: "cloud", apiKey: string, computerName?: string) => void;
   removeProfile: (id: string) => void;
 
-  // Connection (one adapter at a time in the UI)
+  // Connection
   connectionStatus: Record<string, ConnectionStatus>;
   connect: (profileId: string) => Promise<void>;
   disconnect: (profileId: string) => Promise<void>;
 
-  // Data (keyed by profileId)
+  // Data
   agentsByProfile: Record<string, AgentSummary[]>;
   conversationsByAgent: Record<string, ConversationSummary[]>;
-  historyByConversation: Record<string, LettaMessage[]>;
+  /** Live view messages (history + optimistic + streaming), per conversation. */
+  liveMessages: LettaMessage[];
   historyLoading: boolean;
+  turnState: TurnState;
 
   // Selection
   selectedProfileId: string | null;
@@ -68,30 +75,36 @@ interface AppState {
   selectProfile: (id: string) => void;
   selectAgent: (id: string) => void;
   selectConversation: (id: string) => void;
+  openConversation: (id: string) => Promise<void>;
 
-  loadHistory: (conversationId: string) => Promise<void>;
+  // Phase 3 actions
+  sendMessage: (text: string) => Promise<void>;
+  abortTurn: () => Promise<void>;
+  refreshConversation: () => Promise<void>;
 }
 
-// In-memory session keys, NOT persisted. Map profileId -> apiKey.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// In-memory session keys, NOT persisted.
 const sessionKeys = new Map<string, string>();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const adapters = new Map<string, CloudLettaAdapter>();
+// One live manager for the currently open conversation.
+let live: LiveSessionManager | null = null;
+let liveConversationId: string | null = null;
 
 export const useAppStore = create<AppState>((set, get) => ({
   profiles: loadProfiles(),
   agentsByProfile: {},
   conversationsByAgent: {},
-  historyByConversation: {},
+  liveMessages: [],
   historyLoading: false,
+  turnState: { phase: "idle", streamText: "", toolCalls: {} },
   connectionStatus: {},
   selectedProfileId: loadSelection().profileId,
   selectedAgentId: loadSelection().agentId,
   selectedConversationId: loadSelection().conversationId,
 
-  addProfile: (name, kind, apiKey) => {
+  addProfile: (name, kind, apiKey, computerName) => {
     const id = `profile-${Date.now()}`;
-    const profile: ServerProfile = { id, name, kind };
+    const profile: ServerProfile = { id, name, kind, computerName };
     const profiles = [...get().profiles, profile];
     sessionKeys.set(id, apiKey);
     saveProfiles(profiles);
@@ -122,7 +135,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           ...s.connectionStatus,
           [profileId]: {
             state: "error",
-            error: "Нет ключа сессии — добавь профиль заново",
+            error: "Ключ сессии потерян (перезапуск) — добавь профиль заново",
           },
         },
       }));
@@ -136,13 +149,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
     try {
       const adapter = new CloudLettaAdapter(profile, apiKey);
+      // Discover online computer once, use it for sessions.
+      const computer = await adapter.findOnlineComputer();
+      if (computer && !profile.computerName) {
+        const updated = {
+          ...profile,
+          computerName: computer,
+        };
+        saveProfiles(get().profiles.map((p) => (p.id === profileId ? updated : p)));
+        set((s) => ({
+          profiles: s.profiles.map((p) => (p.id === profileId ? updated : p)),
+        }));
+      }
       const agents = await adapter.listAgents();
       adapters.set(profileId, adapter);
       set((s) => ({
         agentsByProfile: { ...s.agentsByProfile, [profileId]: agents },
         connectionStatus: {
           ...s.connectionStatus,
-          [profileId]: { state: "connected" },
+          [profileId]: {
+            state: "connected",
+            error: computer ? undefined : "Нет онлайн-computer — сессии не открыть",
+          },
         },
       }));
     } catch (e) {
@@ -164,12 +192,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       await adapter.close();
       adapters.delete(profileId);
     }
+    if (live) {
+      await live.dispose();
+      live = null;
+      liveConversationId = null;
+    }
     set((s) => ({
       connectionStatus: {
         ...s.connectionStatus,
         [profileId]: { state: "disconnected" },
       },
       agentsByProfile: { ...s.agentsByProfile, [profileId]: [] },
+      liveMessages: [],
     }));
   },
 
@@ -178,29 +212,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       selectedProfileId: id,
       selectedAgentId: null,
       selectedConversationId: null,
+      liveMessages: [],
     });
-    localStorage.setItem(
-      LAST_SELECTION_KEY,
-      JSON.stringify({
-        profileId: id,
-        agentId: null,
-        conversationId: null,
-      } satisfies StoredSelection),
-    );
+    saveSelection({ profileId: id, agentId: null, conversationId: null });
     void get().connect(id);
   },
 
   selectAgent: (id) => {
-    set({ selectedAgentId: id, selectedConversationId: null });
+    set({ selectedAgentId: id, selectedConversationId: null, liveMessages: [] });
     const profileId = get().selectedProfileId;
-    localStorage.setItem(
-      LAST_SELECTION_KEY,
-      JSON.stringify({
-        profileId,
-        agentId: id,
-        conversationId: null,
-      } satisfies StoredSelection),
-    );
+    saveSelection({
+      profileId,
+      agentId: id,
+      conversationId: null,
+    });
     if (!profileId) return;
     const adapter = adapters.get(profileId);
     if (!adapter) return;
@@ -212,35 +237,55 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   selectConversation: (id) => {
-    set({ selectedConversationId: id });
-    localStorage.setItem(
-      LAST_SELECTION_KEY,
-      JSON.stringify({
-        profileId: get().selectedProfileId,
-        agentId: get().selectedAgentId,
-        conversationId: id,
-      } satisfies StoredSelection),
-    );
-    void get().loadHistory(id);
+    set({ selectedConversationId: id, liveMessages: [], historyLoading: true });
+    saveSelection({
+      profileId: get().selectedProfileId,
+      agentId: get().selectedAgentId,
+      conversationId: id,
+    });
+    void get().openConversation(id);
   },
 
-  loadHistory: async (conversationId) => {
+  openConversation: async (id: string) => {
     const profileId = get().selectedProfileId;
-    if (!profileId) return;
-    const adapter = adapters.get(profileId);
-    if (!adapter) return;
-    set({ historyLoading: true });
+    const adapter = profileId ? adapters.get(profileId) : undefined;
+    if (!adapter) {
+      set({ historyLoading: false });
+      return;
+    }
+    if (live && liveConversationId !== id) {
+      await live.dispose();
+      live = null;
+      liveConversationId = null;
+    }
+    if (!live) {
+      live = new LiveSessionManager(adapter, {
+        onMessages: (messages) => set({ liveMessages: messages }),
+        onTurnState: (turnState) => set({ turnState }),
+      });
+      liveConversationId = id;
+    }
     try {
-      const history = await adapter.getHistory(conversationId, 50);
-      set((s) => ({
-        historyByConversation: {
-          ...s.historyByConversation,
-          [conversationId]: history,
-        },
-        historyLoading: false,
-      }));
-    } catch {
+      await live.loadHistory(id);
+    } finally {
       set({ historyLoading: false });
     }
+  },
+
+  sendMessage: async (text) => {
+    const conversationId = get().selectedConversationId;
+    if (!conversationId || !live) return;
+    await live.send(conversationId, text);
+  },
+
+  abortTurn: async () => {
+    if (!live) return;
+    await live.abort();
+  },
+
+  refreshConversation: async () => {
+    const conversationId = get().selectedConversationId;
+    if (!conversationId || !live) return;
+    await live.loadHistory(conversationId);
   },
 }));

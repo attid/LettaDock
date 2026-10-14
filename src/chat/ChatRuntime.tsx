@@ -8,16 +8,24 @@ import { useAppStore } from "../store/appStore";
 import type { LettaMessage } from "../letta/types";
 import type { ReactNode } from "react";
 
-// Convert stored Letta history into assistant-ui ThreadMessageLike.
-// Read-only: no onNew — composer is disabled via isDisabled.
+// Convert live message view (history + optimistic + streaming) into
+// assistant-ui ThreadMessageLike. Tool calls from both history and live
+// turns render as tool-call parts.
 function toThreadMessages(history: LettaMessage[]): ThreadMessageLike[] {
   const out: ThreadMessageLike[] = [];
   for (const m of history) {
     switch (m.messageType) {
       case "user_message":
+        out.push({
+          role: "user",
+          id: m.id,
+          createdAt: new Date(m.date),
+          content: [{ type: "text", text: m.content ?? "" }],
+        });
+        break;
       case "assistant_message":
         out.push({
-          role: m.messageType === "user_message" ? "user" : "assistant",
+          role: "assistant",
           id: m.id,
           createdAt: new Date(m.date),
           content: [{ type: "text", text: m.content ?? "" }],
@@ -38,7 +46,35 @@ function toThreadMessages(history: LettaMessage[]): ThreadMessageLike[] {
               toolCallId: raw?.tool_call_id ?? m.id,
               toolName: "tool result",
               argsText: "",
+              args: {},
               result: truncate(raw?.content ?? ""),
+            },
+          ],
+        });
+        break;
+      }
+      case "tool_call_message": {
+        const raw = m.raw as {
+          tool_call_id?: string;
+          name?: string;
+          arguments?: string;
+          result?: string;
+          done?: boolean;
+        };
+        out.push({
+          role: "assistant",
+          id: m.id,
+          createdAt: new Date(m.date),
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: raw?.tool_call_id ?? m.id,
+              toolName: raw?.name ?? "tool",
+              argsText: "",
+              args: safeParseObj(raw?.arguments),
+              result: raw?.done
+                ? (raw.result ?? "(готово)")
+                : "(выполняется…)",
             },
           ],
         });
@@ -58,26 +94,22 @@ function toThreadMessages(history: LettaMessage[]): ThreadMessageLike[] {
               toolCallId: raw?.tool_call?.name ?? m.id,
               toolName: raw?.tool_call?.name ?? "approval",
               argsText: "",
-              args: safeParse(raw?.tool_call?.arguments),
-              result: "(запрос аппрува)",
+              args: safeParseObj(raw?.tool_call?.arguments),
+              result: "(запрос аппрува — одобри в CLI/Telegram)",
             },
           ],
         });
         break;
       }
-      case "reasoning_message":
-        // Skip reasoning in the chat view for now (later: collapsible).
-        break;
-      case "system_message":
-        break;
       default:
+        // reasoning/system/tool-unknown: skip in chat view
         break;
     }
   }
   return out;
 }
 
-function safeParse(s?: string): { [k: string]: string } {
+function safeParseObj(s?: string): { [k: string]: string } {
   if (!s) return {};
   try {
     const v = JSON.parse(s);
@@ -107,32 +139,39 @@ const EMPTY_PLACEHOLDER: ThreadMessageLike[] = [
   {
     role: "assistant",
     id: "empty",
-    content: [{ type: "text", text: "Нет сообщений в этом диалоге." }],
+    content: [{ type: "text", text: "Нет сообщений. Напиши что-нибудь." }],
   },
 ];
 
 export function ChatRuntime({ children }: { children: ReactNode }) {
-  const history = useAppStore((s) =>
-    s.selectedConversationId
-      ? s.historyByConversation[s.selectedConversationId]
-      : undefined,
-  );
+  const liveMessages = useAppStore((s) => s.liveMessages);
   const loading = useAppStore((s) => s.historyLoading);
+  const turnState = useAppStore((s) => s.turnState);
+  const sendMessage = useAppStore((s) => s.sendMessage);
+  const abortTurn = useAppStore((s) => s.abortTurn);
 
   const messages = useMemo<ThreadMessageLike[]>(() => {
     if (loading) return LOADING_PLACEHOLDER;
-    if (!history || history.length === 0) return EMPTY_PLACEHOLDER;
-    return toThreadMessages(history);
-  }, [history, loading]);
+    if (!liveMessages || liveMessages.length === 0) return EMPTY_PLACEHOLDER;
+    return toThreadMessages(liveMessages);
+  }, [liveMessages, loading]);
+
+  const running = turnState.phase === "sending" || turnState.phase === "streaming";
 
   const runtime = useExternalStoreRuntime({
     messages,
-    isRunning: false,
-    // Read-only: block composer entirely (Phase 3 will enable sending).
-    isDisabled: true,
+    isRunning: running,
+    isDisabled: !liveMessages || liveMessages.length === 0 ? false : false,
     convertMessage: (m) => m,
-    onNew: async () => {
-      // Unreachable while isDisabled, but the adapter contract requires onNew.
+    onCancel: running
+      ? async () => {
+          await abortTurn();
+        }
+      : undefined,
+    onNew: async (message) => {
+      const textPart = message.content.find((p) => p.type === "text");
+      const text = textPart?.type === "text" ? textPart.text : "";
+      await sendMessage(text);
     },
   });
 

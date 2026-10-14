@@ -1,10 +1,12 @@
-// Cloud adapter implementation over @letta-ai/letta-agent-sdk.
-// Verified against SDK 0.8.42:
-//   new LettaAgentClient({ backend: "cloud", apiKey })
-//   client.agents.list()                    -> { agents: [...] }
-//   client.conversations.list({ agentId })  -> { conversations: [...] }
-//   client.conversations.listMessages(conversationId, { limit })
-// Close the client when done — it holds a local server handle in some backends.
+// Cloud adapter over @letta-ai/letta-agent-sdk — portable client entry.
+// Phase 3: switched from Node entry to /client (no node:child_process),
+// webSocketAuth: "query" (browser WS cannot set Authorization headers).
+// Verified shapes (see docs/phase2-api-notes.md + docs/phase3-session-notes.md):
+//   client.agents.list()                          -> Array (APIPromise unwraps ArrayPage)
+//   client.conversations.list({ agentId })        -> Array
+//   client.conversations.listMessages(convId,{})  -> { messages: [...] }
+//   client.computers.list()                       -> Array
+//   client.resumeSession(convId) -> session (send/stream/abort/close)
 import type {
   AgentSummary,
   ConversationSummary,
@@ -13,36 +15,43 @@ import type {
   ServerProfile,
 } from "./types";
 
-// Lazy import: the SDK pulls in heavy Node deps; keep it out of the initial
-// bundle path until a profile actually connects. (Tauri webview runs Node-
-// compatible code only in a Node context; in-browser we will need the /client
-// entry — verified as an SDK export " PORT". Tracked in docs/phase2-api-notes.md.)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SdkClient = any;
+
 export class CloudLettaAdapter implements LettaAdapter {
   private apiKey: string;
+  private profile: ServerProfile;
+  private client: SdkClient | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private client: any = null;
+  private sdkPromise: Promise<any> | null = null;
 
-  constructor(_profile: ServerProfile, apiKey: string) {
+  constructor(profile: ServerProfile, apiKey: string) {
+    this.profile = profile;
     this.apiKey = apiKey;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async sdk(): Promise<any> {
+  private async sdk(): Promise<SdkClient> {
     if (!this.client) {
-      const mod = await import("@letta-ai/letta-agent-sdk");
-      this.client = new mod.LettaAgentClient({
-        backend: "cloud",
-        apiKey: this.apiKey,
-      });
+      this.sdkPromise ??= import("@letta-ai/letta-agent-sdk/client").then(
+        (mod) => {
+          this.client = new mod.LettaAgentClient({
+            backend: "cloud",
+            apiKey: this.apiKey,
+            webSocketAuth: "query" as const,
+          });
+          return this.client;
+        },
+      );
+      return this.sdkPromise;
     }
     return this.client;
   }
 
   async listAgents(): Promise<AgentSummary[]> {
     const client = await this.sdk();
-    const res = await client.agents.list();
-    const items = res.agents ?? res.items ?? res;
-    return items.map((a: { id: string; name?: string }) => ({
+    const items = await client.agents.list();
+    const arr = Array.isArray(items) ? items : (items.items ?? []);
+    return arr.map((a: { id: string; name?: string }) => ({
       id: a.id,
       name: a.name ?? a.id,
     }));
@@ -50,20 +59,20 @@ export class CloudLettaAdapter implements LettaAdapter {
 
   async listConversations(agentId: string): Promise<ConversationSummary[]> {
     const client = await this.sdk();
-    const res = await client.conversations.list({ agentId });
-    const items = res.conversations ?? res.items ?? res;
-    return items.map(
+    const items = await client.conversations.list({ agentId });
+    const arr = Array.isArray(items) ? items : (items.items ?? []);
+    return arr.map(
       (c: {
         id: string;
         name?: string;
         created_at?: string;
-        last_message_at?: string;
+        last_modification_date?: string;
       }) => ({
         id: c.id,
         agentId,
-        name: c.name ?? c.id,
+        name: c.name ?? "",
         createdAt: c.created_at ?? "",
-        lastMessageAt: c.last_message_at,
+        lastMessageAt: c.last_modification_date,
       }),
     );
   }
@@ -73,8 +82,8 @@ export class CloudLettaAdapter implements LettaAdapter {
     const res = await client.conversations.listMessages(conversationId, {
       limit,
     });
-    const items = res.messages ?? res.items ?? res;
-    return items.map(
+    const arr = res.messages ?? res.items ?? res;
+    return (Array.isArray(arr) ? arr : []).map(
       (m: {
         id: string;
         date: string;
@@ -90,10 +99,37 @@ export class CloudLettaAdapter implements LettaAdapter {
     );
   }
 
+  async findOnlineComputer(): Promise<string | null> {
+    try {
+      const client = await this.sdk();
+      const items = await client.computers.list();
+      const arr = Array.isArray(items) ? items : (items.items ?? []);
+      const online = arr.find(
+        (c: { connectionId?: string | null }) => c.connectionId,
+      );
+      return online ? (online.name ?? online.deviceId ?? null) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Open a live session for sending/streaming. Tools run on the profile's computer when set. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async openSession(conversationId: string, computerName?: string): Promise<any> {
+    const client = await this.sdk();
+    const options: Record<string, unknown> = {};
+    const computer = computerName ?? this.profile.computerName;
+    if (computer) options.computer = { name: computer };
+    const session = client.resumeSession(conversationId, options);
+    await session.ready();
+    return session;
+  }
+
   async close(): Promise<void> {
     if (this.client) {
       await this.client.close();
       this.client = null;
+      this.sdkPromise = null;
     }
   }
 }
