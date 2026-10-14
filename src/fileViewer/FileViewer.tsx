@@ -4,6 +4,7 @@
 //  1. Files uploaded/attached in-session → sandbox download API
 //  2. Local workspace paths (ibook26 execution target) → local read via Rust
 import { lazy, Suspense, useEffect, useState } from "react";
+import { useAppStore } from "../store/appStore";
 
 const MonacoEditor = lazy(() => import("@monaco-editor/react").then((m) => ({ default: m.default })));
 const DiffEditor = lazy(() =>
@@ -53,10 +54,16 @@ export function FileViewer({
         }
         if (file.sandboxId) {
           const { invoke } = await import("@tauri-apps/api/core");
-          // Download goes via Rust (proxy principle).
+          // Download goes via Rust (proxy principle) — key passed like other
+          // proxy calls (P1 fix: was missing, serde rejected the request).
+          const apiKey =
+            useAppStore.getState().getProfileKey() ??
+            ((): string => {
+              throw new Error("нет ключа профиля");
+            })();
           const res = await invoke<{ status: number; body: string }>(
             "proxy_download_sandbox_file",
-            { req: { sandboxId: file.sandboxId, path: file.path } },
+            { req: { sandboxId: file.sandboxId, path: file.path, apiKey } },
           );
           if (res.status >= 400) {
             throw new Error(`HTTP ${res.status}: ${res.body.slice(0, 120)}`);

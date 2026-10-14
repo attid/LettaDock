@@ -54,7 +54,7 @@ const UserText = ({ text }: TextMessagePartProps) => (
   </span>
 );
 
-const ToolCall = ({ toolName, argsText, result, onOpenFile }: ToolCallMessagePartProps & { onOpenFile?: (p: string) => void }) => {
+const ToolCall = ({ toolName, argsText, result }: ToolCallMessagePartProps) => {
   // Edit/Write tool calls: args usually carry file_path + old/new content →
   // offer a diff view. Read-only tools keep the plain fallback.
   let filePath: string | undefined;
@@ -75,11 +75,9 @@ const ToolCall = ({ toolName, argsText, result, onOpenFile }: ToolCallMessagePar
       <div className="flex items-center gap-1.5 font-semibold text-muted-foreground">
         <Wrench className="h-3 w-3" />
         {toolName}
-        {canDiff && onOpenFile && (
+        {canDiff && (
           <button
-            onClick={() =>
-              onOpenFile(filePath!)
-            }
+            onClick={() => openFileRef.current?.(filePath!)}
             className="ml-auto rounded px-1.5 py-0.5 text-[10px] font-normal text-primary hover:bg-primary/10"
           >
             diff: {filePath?.split("/").pop()}

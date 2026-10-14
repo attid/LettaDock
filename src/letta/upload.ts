@@ -27,5 +27,9 @@ export async function uploadFileMultipart(
     throw new Error(`upload HTTP ${res.status}: ${res.body.slice(0, 150)}`);
   }
   const parsed = JSON.parse(res.body) as { files?: UploadedFile[] };
-  return (parsed.files ?? [])[0];
+  const first = parsed.files?.[0];
+  if (!first) {
+    throw new Error("upload: пустой ответ сервера (files[])");
+  }
+  return first;
 }

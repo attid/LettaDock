@@ -393,6 +393,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     live.setTarget(convTarget);
     try {
       await live.loadHistory(id);
+      // P1 race guard: user may have clicked another conversation while we
+      // were loading — don't overwrite the newer view with older data.
+      if (get().selectedConversationId !== id) {
+        L(`openConversation: stale load for ${id}, current is ${get().selectedConversationId}`);
+        return;
+      }
       // Model + context usage (PWA parity). Non-fatal on failure.
       try {
         const conv = await adapter.retrieveConversationRaw(id);
@@ -403,7 +409,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         L(`model info load failed: ${e instanceof Error ? e.message : String(e)}`);
       }
     } finally {
-      set({ historyLoading: false });
+      if (get().selectedConversationId === id) {
+        set({ historyLoading: false });
+      }
     }
   },
 

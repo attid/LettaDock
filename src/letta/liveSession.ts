@@ -51,6 +51,8 @@ export class LiveSessionManager {
    *  null keeps the profile default. */
   private targetOverride: "cloud" | { deviceId: string; name: string } | null =
     null;
+  /** Conversation the current turn belongs to (P1 race guard). */
+  private activeTurnConversationId: string | null = null;
 
   // Working state for the current conversation view
   private history: LettaMessage[] = [];
@@ -67,7 +69,12 @@ export class LiveSessionManager {
 
   /** Load (or reload) base history for a conversation, e.g. on open or refresh. */
   async loadHistory(conversationId: string, limit = 50): Promise<void> {
+    // P1: a conversation switch aborts any in-flight turn of the old one.
     if (this.sessionConversationId !== conversationId) {
+      if (this.activeTurnConversationId && this.activeTurnConversationId !== conversationId) {
+        this.aborted = true;
+        this.turn = { ...idleState };
+      }
       await this.closeSession();
     }
     const history = await this.adapter.getHistory(conversationId, limit);
@@ -188,6 +195,9 @@ export class LiveSessionManager {
       this.turn = { ...this.turn, phase: "streaming" };
       this.emit();
 
+      // P1: track which conversation owns this turn — switching dialogs
+      // mid-stream must not leak events or history into the new one.
+      this.activeTurnConversationId = conversationId;
       await this.session.send(
         contentParts.length === 1 && contentParts[0].type === "text"
           ? contentParts[0].text
@@ -195,6 +205,8 @@ export class LiveSessionManager {
       );
       for await (const msg of this.session.stream()) {
         if (this.aborted) break;
+        // Conversation switched mid-stream: drop stale events silently.
+        if (this.activeTurnConversationId !== conversationId) break;
         this.applyStreamEvent(msg);
         this.emit();
         if (msg.type === "result") break;
@@ -205,10 +217,15 @@ export class LiveSessionManager {
         streamText: "",
         toolCalls: {},
       };
-      // Refetch authoritative history to reconcile (dedup, ordering).
-      this.history = await this.adapter.getHistory(conversationId, 50);
-      this.emit();
+      // Refetch authoritative history — only if the user stayed on this
+      // conversation (P1 race: A's refetch must not overwrite B's view).
+      if (this.activeTurnConversationId === conversationId) {
+        this.history = await this.adapter.getHistory(conversationId, 50);
+        this.emit();
+      }
     } catch (e) {
+      // Errors from a stale turn are dropped silently (conversation moved on).
+      if (this.activeTurnConversationId !== conversationId) return;
       this.turn = {
         ...idleState,
         phase: "error",

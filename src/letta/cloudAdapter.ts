@@ -274,11 +274,41 @@ export class CloudLettaAdapter implements LettaAdapter {
       // No computer option → SDK creates a managed sandbox for the session.
       await log("openSession: target=cloud (managed sandbox)");
     } else if (targetOverride) {
-      // Stable deviceId wins (connectionId rotates — log-verified).
-      options.computer = { deviceId: targetOverride.deviceId };
-      await log(
-        `openSession: target override deviceId=${targetOverride.deviceId} (${targetOverride.name})`,
-      );
+      // P2 fix (agy): TargetSelector may store a human name in deviceId.
+      // Resolve it to a real deviceId via /v1/environments before opening.
+      const looksLikeUuid =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          targetOverride.deviceId,
+        );
+      if (looksLikeUuid) {
+        options.computer = { deviceId: targetOverride.deviceId };
+        await log(
+          `openSession: target override deviceId=${targetOverride.deviceId} (${targetOverride.name})`,
+        );
+      } else {
+        const arr = (await this.proxy.listEnvironments({})) as Array<{
+          deviceId?: string;
+          connectionName?: string;
+          name?: string;
+        }>;
+        const match = arr.find(
+          (c) =>
+            c.connectionName === targetOverride.deviceId ||
+            c.name === targetOverride.deviceId,
+        );
+        if (match?.deviceId) {
+          options.computer = { deviceId: match.deviceId };
+          await log(
+            `openSession: target name="${targetOverride.deviceId}" → deviceId=${match.deviceId}`,
+          );
+        } else {
+          // Name not found: pass as name, SDK will error visibly.
+          options.computer = { name: targetOverride.deviceId };
+          await log(
+            `openSession: name "${targetOverride.deviceId}" not in environments — passing as name`,
+          );
+        }
+      }
     } else {
       const computer = computerName ?? this.profile.computerName;
       if (computer && this.lastOnlineDeviceId) {

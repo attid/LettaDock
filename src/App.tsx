@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ChatRuntime } from "./chat/ChatRuntime";
 import { MyThread, registerFileOpener } from "./chat/MyThread";
@@ -225,7 +225,11 @@ function App() {
     void conversationId;
     setViewerFile({ path });
   };
-  registerFileOpener(handleOpenFile);
+  // P3 (agy): register in an effect, not in the render body.
+  useEffect(() => {
+    registerFileOpener(handleOpenFile);
+    return () => registerFileOpener(() => {});
+  }, []);
 
   return (
     <>

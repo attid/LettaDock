@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Cloud,
   HardDrive,
@@ -93,6 +93,7 @@ export function Sidebar() {
     selectConversation,
     removeProfile,
     disconnect,
+    connect,
   } = useAppStore();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -120,16 +121,17 @@ export function Sidebar() {
     ? (conversationsByAgent[selectedAgentId] ?? [])
     : [];
 
+  // Auto-connect the last-selected profile once on startup. resolveKey()
+  // pulls the key from ~/.letta/settings.json, so restart works without
+  // manual re-entry. Runs exactly once (guard ref).
+  const autoConnectDone = useRef(false);
   useEffect(() => {
-    // Auto-connect the last-selected profile on startup.
+    if (autoConnectDone.current) return;
     if (selectedProfileId && profiles.some((p) => p.id === selectedProfileId)) {
-      const status = connectionStatus[selectedProfileId]?.state;
-      if (!status || status === "disconnected") {
-        // Key is gone after restart (session-only by design); profile exists
-        // but cannot auto-connect — needs re-entry. Nothing to do silently.
-      }
+      autoConnectDone.current = true;
+      void connect(selectedProfileId);
     }
-  }, [selectedProfileId, profiles, connectionStatus]);
+  }, [selectedProfileId, profiles, connect]);
 
   return (
     <aside className="flex h-full w-72 shrink-0 flex-col border-r bg-card/50">

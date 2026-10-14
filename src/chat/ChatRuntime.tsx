@@ -178,7 +178,7 @@ export function ChatRuntime({ children }: { children: ReactNode }) {
               type: "image",
               source: {
                 type: "base64",
-                media_type: "image/png",
+                media_type: img.mediaType,
                 data: img.base64,
               },
             });
@@ -196,7 +196,7 @@ export function ChatRuntime({ children }: { children: ReactNode }) {
             type: "image",
             source: {
               type: "base64",
-              media_type: "image/png",
+              media_type: img.mediaType,
               data: img.base64,
             },
           });

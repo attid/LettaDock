@@ -24,6 +24,9 @@ fn read_local_letta_key() -> Result<Option<String>, String> {
 
 /// Append a debug line to /tmp/lettadock-ui.log (capped at ~1MB).
 /// Phase-3 debugging aid: lets the agent read UI-side errors itself.
+/// Debug builds only (agy P2: /tmp log file in release is a leak surface —
+/// the frontend L() helper falls back to console-only).
+#[cfg(debug_assertions)]
 #[tauri::command]
 fn append_debug_log(line: String) -> Result<(), String> {
     use std::io::Write;
@@ -47,17 +50,29 @@ pub mod proxy;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    // Debug builds register the /tmp debug-log command too (agy P2: no
+    // release-side /tmp log file).
+    #[cfg(debug_assertions)]
+    let builder = tauri::Builder::default().invoke_handler(tauri::generate_handler![
+        read_local_letta_key,
+        append_debug_log,
+        proxy::proxy_letta_api,
+        proxy::proxy_upload_file,
+        proxy::proxy_download_sandbox_file,
+        clipboard::read_clipboard_image,
+        clipboard::read_clipboard_text
+    ]);
+    #[cfg(not(debug_assertions))]
+    let builder = tauri::Builder::default().invoke_handler(tauri::generate_handler![
+        read_local_letta_key,
+        proxy::proxy_letta_api,
+        proxy::proxy_upload_file,
+        proxy::proxy_download_sandbox_file,
+        clipboard::read_clipboard_image,
+        clipboard::read_clipboard_text
+    ]);
+    builder
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![
-            read_local_letta_key,
-            append_debug_log,
-            proxy::proxy_letta_api,
-            proxy::proxy_upload_file,
-            proxy::proxy_download_sandbox_file,
-            clipboard::read_clipboard_image,
-            clipboard::read_clipboard_text
-        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

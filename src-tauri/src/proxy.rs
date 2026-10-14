@@ -30,6 +30,15 @@ pub struct ProxyResponse {
 
 #[tauri::command]
 pub async fn proxy_letta_api(req: ProxyRequest) -> Result<ProxyResponse, String> {
+    // SSRF guard: path must be an absolute API path on api.letta.com.
+    // Rejects '@evil.com' userinfo tricks, '//evil.com', '..' traversal.
+    if !req.path.starts_with("/v1/")
+        || req.path.contains('@')
+        || req.path.starts_with("//")
+        || req.path.contains("..")
+    {
+        return Err(format!("blocked proxy path: {}", &req.path[..req.path.len().min(80)]));
+    }
     let client = reqwest::Client::new();
     let mut url = format!("https://api.letta.com{}", req.path);
     if !req.query.is_empty() {

@@ -26,7 +26,8 @@ export interface ConversationModelInfo {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function extractModelInfo(conversation: any, messages: any[]): ConversationModelInfo {
+export function extractModelInfo(conversation: any, messages: any[]): ConversationModelInfo | null {
+  if (!conversation) return null;
   const model: string = conversation.model ?? "unknown";
   const limit: number = conversation.context_window_limit ?? 0;
   const inCtx = new Set<string>(conversation.in_context_message_ids ?? []);

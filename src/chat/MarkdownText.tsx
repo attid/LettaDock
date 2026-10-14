@@ -42,7 +42,23 @@ const TextComponent = (_props: TextMessagePartProps) => (
         />
       ),
       a: ({ className, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-        <a className={cn("text-primary underline", className)} {...props} />
+        <a
+          className={cn("text-primary underline", className)}
+          onClick={(e) => {
+            // Open external links in the system browser, never in the
+            // webview; block non-http(s) schemes (javascript: etc).
+            const href = e.currentTarget.getAttribute("href") ?? "";
+            if (!/^https?:\/\//i.test(href)) {
+              e.preventDefault();
+              return;
+            }
+            e.preventDefault();
+            void import("@tauri-apps/plugin-opener").then(({ openUrl }) =>
+              openUrl(href),
+            );
+          }}
+          {...props}
+        />
       ),
       blockquote: ({ className, ...props }: React.BlockquoteHTMLAttributes<HTMLQuoteElement>) => (
         <blockquote
