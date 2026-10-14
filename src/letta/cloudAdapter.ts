@@ -40,43 +40,57 @@ async function log(msg: string): Promise<void> {
  * that are entirely <system-reminder>…</system-reminder>, and strip any
  * reminder tags from mixed parts. Images kept as [image] placeholder.
  */
-function normalizeContent(content: unknown): string | undefined {
-  const stripReminders = (s: string): string =>
-    s
-      .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
-      .replace(/<\/?system-reminder>/g, "")
-      .trim();
+export function stripRemindersFromText(s: string): string {
+  return s
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+    .replace(/<\/?system-reminder>/g, "")
+    .trim();
+}
 
-  const collect = (parts: Array<{ type?: string; text?: string }>): string | undefined => {
-    const texts: string[] = [];
-    const other: string[] = [];
+/**
+ * Preserve part order for display: text parts (reminder-stripped) and
+ * images as ordered entries, so history renders "текст [image] текст".
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function contentToParts(content: any): Array<{ type: "text" | "image"; text?: string }> {
+  const collect = (
+    parts: Array<{ type?: string; text?: string }>,
+  ): Array<{ type: "text" | "image"; text?: string }> => {
+    const out: Array<{ type: "text" | "image"; text?: string }> = [];
     for (const p of parts) {
       if (p?.type === "text" && typeof p.text === "string") {
-        const clean = stripReminders(p.text);
-        if (clean) texts.push(clean);
-      } else if (p?.type && p.type !== "text") {
-        other.push(`[${p.type}]`);
+        const clean = stripRemindersFromText(p.text);
+        if (clean) out.push({ type: "text", text: clean });
+      } else if (p?.type === "image") {
+        out.push({ type: "image" });
       }
     }
-    const joined = [...texts, ...other].join("\n");
-    return joined || undefined;
+    return out;
   };
-
   if (typeof content === "string") {
     if (content.startsWith("[")) {
       try {
         const parsed = JSON.parse(content);
         if (Array.isArray(parsed)) return collect(parsed);
       } catch {
-        /* plain string */
+        /* plain string that starts with [ */
       }
     }
-    return stripReminders(content) || content;
+    const clean = stripRemindersFromText(content);
+    return clean ? [{ type: "text", text: clean }] : [];
   }
   if (Array.isArray(content)) {
     return collect(content as Array<{ type?: string; text?: string }>);
   }
-  return undefined;
+  return [];
+}
+
+function normalizeContent(content: unknown): string | undefined {
+  const parts = contentToParts(content);
+  if (parts.length === 0) return undefined;
+  return parts
+    .map((p) => (p.type === "image" ? "[image]" : (p.text ?? "")))
+    .join("\n");
 }
 
 export class CloudLettaAdapter implements LettaAdapter {
