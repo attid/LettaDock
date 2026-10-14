@@ -11,6 +11,7 @@
 // request from the Rust side (no server process).
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProxyRequest {
     pub method: String,
     pub path: String,
