@@ -54,6 +54,7 @@ pub fn run() {
             append_debug_log,
             proxy::proxy_letta_api,
             proxy::proxy_upload_file,
+            proxy::proxy_download_sandbox_file,
             clipboard::read_clipboard_image,
             clipboard::read_clipboard_text
         ])

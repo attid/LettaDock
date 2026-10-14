@@ -67,6 +67,35 @@ pub async fn proxy_letta_api(req: ProxyRequest) -> Result<ProxyResponse, String>
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DownloadRequest {
+    pub sandbox_id: String,
+    pub path: String,
+    pub api_key: String,
+}
+
+/// GET /v1/sandboxes/{id}/files?path=… — read file content from a sandbox.
+#[tauri::command]
+pub async fn proxy_download_sandbox_file(
+    req: DownloadRequest,
+) -> Result<ProxyResponse, String> {
+    let url = format!(
+        "https://api.letta.com/v1/sandboxes/{}/files",
+        urlencoding::encode(&req.sandbox_id)
+    );
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .query(&[("path", &req.path)])
+        .header("Authorization", format!("Bearer {}", req.api_key))
+        .send()
+        .await
+        .map_err(|e| format!("download failed: {e}"))?;
+    let status = resp.status().as_u16();
+    let body = resp.text().await.map_err(|e| e.to_string())?;
+    Ok(ProxyResponse { status, body })
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UploadRequest {
     pub sandbox_id: String,
     pub api_key: String,

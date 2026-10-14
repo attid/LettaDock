@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive } from "@assistant-ui/react";
 import type { TextMessagePartProps, ToolCallMessagePartProps } from "@assistant-ui/react";
 import { MarkdownText } from "./MarkdownText";
-import { SendHorizontal, Square, Wrench, Paperclip } from "lucide-react";
+import { SendHorizontal, Square, Wrench, Paperclip, FileText } from "lucide-react";
 import { useAppStore } from "../store/appStore";
 import { usePendingImages } from "./pendingImages";
 import { prepareImage } from "./images";
@@ -17,26 +17,86 @@ const UserMessage = () => (
   </MessagePrimitive.Root>
 );
 
+// Phase 4: [файл: path] chips in user messages → open in viewer.
+// App registers its handler here (module-level, avoids prop drilling
+// through assistant-ui part components which can't take custom props).
+const openFileRef: { current: ((path: string) => void) | null } = {
+  current: null,
+};
+export function registerFileOpener(fn: (path: string) => void) {
+  openFileRef.current = fn;
+}
+
+function FileChips({ text }: { text: string }) {
+  const matches = [...text.matchAll(/\[файл: ([^\]]+)\]/g)];
+  if (matches.length === 0) return null;
+  return (
+    <div className="mt-1 flex flex-wrap gap-1.5">
+      {matches.map((m, i) => (
+        <button
+          key={i}
+          onClick={() => openFileRef.current?.(m[1])}
+          className="flex items-center gap-1 rounded border border-border bg-secondary/50 px-2 py-0.5 font-mono text-[10px] text-muted-foreground hover:border-primary hover:text-foreground"
+          title="Открыть в просмотрщике"
+        >
+          <FileText className="h-3 w-3" />
+          <span className="max-w-[220px] truncate">{m[1]}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const UserText = ({ text }: TextMessagePartProps) => (
-  <span className="whitespace-pre-wrap">{text}</span>
+  <span className="whitespace-pre-wrap">
+    {text}
+    <FileChips text={text} />
+  </span>
 );
 
-const ToolCall = ({ toolName, argsText, result }: ToolCallMessagePartProps) => (
-  <div className="mb-2 rounded-md border bg-secondary/40 px-3 py-2 font-mono text-xs">
-    <div className="flex items-center gap-1.5 font-semibold text-muted-foreground">
-      <Wrench className="h-3 w-3" />
-      {toolName}
-    </div>
-    {argsText && (
-      <div className="mt-1 whitespace-pre-wrap break-all text-muted-foreground">
-        {argsText}
+const ToolCall = ({ toolName, argsText, result, onOpenFile }: ToolCallMessagePartProps & { onOpenFile?: (p: string) => void }) => {
+  // Edit/Write tool calls: args usually carry file_path + old/new content →
+  // offer a diff view. Read-only tools keep the plain fallback.
+  let filePath: string | undefined;
+  let newContent: string | undefined;
+  try {
+    const args = JSON.parse(argsText || "{}") as Record<string, unknown>;
+    if (typeof args.file_path === "string") filePath = args.file_path;
+    if (typeof args.path === "string") filePath = args.path;
+    if (typeof args.new_string === "string") newContent = args.new_string;
+    if (typeof args.content === "string") newContent = args.content;
+  } catch {
+    /* non-JSON args */
+  }
+  const canDiff = Boolean(filePath && newContent != null);
+
+  return (
+    <div className="mb-2 rounded-md border bg-secondary/40 px-3 py-2 font-mono text-xs">
+      <div className="flex items-center gap-1.5 font-semibold text-muted-foreground">
+        <Wrench className="h-3 w-3" />
+        {toolName}
+        {canDiff && onOpenFile && (
+          <button
+            onClick={() =>
+              onOpenFile(filePath!)
+            }
+            className="ml-auto rounded px-1.5 py-0.5 text-[10px] font-normal text-primary hover:bg-primary/10"
+          >
+            diff: {filePath?.split("/").pop()}
+          </button>
+        )}
       </div>
-    )}
-    {result != null && (
-      <div className="mt-1 whitespace-pre-wrap break-all">{String(result)}</div>
-    )}
-  </div>
-);
+      {argsText && (
+        <div className="mt-1 whitespace-pre-wrap break-all text-muted-foreground">
+          {argsText}
+        </div>
+      )}
+      {result != null && (
+        <div className="mt-1 whitespace-pre-wrap break-all">{String(result)}</div>
+      )}
+    </div>
+  );
+};
 
 const AssistantMessage = () => (
   <MessagePrimitive.Root className="px-4 py-2">

@@ -194,6 +194,22 @@ export class LettaProxyClient {
     );
   }
 
+  /** GET /v1/sandboxes/{id}/files?path=… via Rust command (key passed like other proxy calls). */
+  async downloadSandboxFile(
+    sandboxId: string,
+    path: string,
+    apiKey: string,
+  ): Promise<string> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const res = (await invoke("proxy_download_sandbox_file", {
+      req: { sandboxId, path, apiKey },
+    })) as { status: number; body: string };
+    if (res.status >= 400) {
+      throw new Error(`HTTP ${res.status}: ${res.body.slice(0, 150)}`);
+    }
+    return res.body;
+  }
+
   /** Fetch a fresh connection record by device id (connectionId rotates on reconnect). */
   async getDeviceConnection(deviceId: string): Promise<{
     connectionId?: string;

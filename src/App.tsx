@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ChatRuntime } from "./chat/ChatRuntime";
-import { MyThread } from "./chat/MyThread";
+import { MyThread, registerFileOpener } from "./chat/MyThread";
+import { FileViewer, type FileRef } from "./fileViewer/FileViewer";
 import { useAppStore } from "./store/appStore";
 import { cn } from "./lib/utils";
 
@@ -200,6 +201,7 @@ function ModelBadge() {
 }
 
 function App() {
+  const [viewerFile, setViewerFile] = useState<FileRef | null>(null);
   const selectedConversationId = useAppStore((s) => s.selectedConversationId);
   const selectedAgentId = useAppStore((s) => s.selectedAgentId);
   const conversation = useAppStore((s) =>
@@ -210,7 +212,26 @@ function App() {
       : undefined,
   );
 
+  // Phase 4: file chips in chat open the Monaco viewer. Path sources:
+  //  - /root/downloads/… (sandbox-attached files) → sandbox download
+  //  - local workspace paths (ibook26 target) → not readable via API yet;
+  //    viewer shows a clear error instead of pretending (spec: unsupported
+  //    actions visibly unavailable).
+  const handleOpenFile = (path: string) => {
+    const conversationId = useAppStore.getState().selectedConversationId;
+    // Sandbox id of the current conversation's attachments is not tracked
+    // post-upload (ephemeral, terminated after use) — so sandbox downloads
+    // only work while the sandbox lives. For now: local attempt via Rust.
+    void conversationId;
+    setViewerFile({ path });
+  };
+  registerFileOpener(handleOpenFile);
+
   return (
+    <>
+    {viewerFile && (
+      <FileViewer file={viewerFile} onClose={() => setViewerFile(null)} />
+    )}
     <ChatRuntime>
       <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <Sidebar />
@@ -233,6 +254,7 @@ function App() {
       </main>
     </div>
     </ChatRuntime>
+    </>
   );
 }
 
