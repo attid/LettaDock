@@ -47,6 +47,10 @@ export class LiveSessionManager {
   private session: any = null;
   private sessionConversationId: string | null = null;
   private aborted = false;
+  /** TARGET-1: "cloud" forces managed sandbox; {deviceId} forces computer;
+   *  null keeps the profile default. */
+  private targetOverride: "cloud" | { deviceId: string; name: string } | null =
+    null;
 
   // Working state for the current conversation view
   private history: LettaMessage[] = [];
@@ -55,6 +59,10 @@ export class LiveSessionManager {
   constructor(adapter: CloudLettaAdapter, handlers: ChatEventHandlers) {
     this.adapter = adapter;
     this.handlers = handlers;
+  }
+
+  setTarget(target: "cloud" | { deviceId: string; name: string } | undefined) {
+    this.targetOverride = target ?? null;
   }
 
   /** Load (or reload) base history for a conversation, e.g. on open or refresh. */
@@ -149,7 +157,11 @@ export class LiveSessionManager {
         this.sessionConversationId !== conversationId
       ) {
         await this.closeSession();
-        this.session = await this.adapter.openSession(conversationId);
+        this.session = await this.adapter.openSession(
+          conversationId,
+          undefined,
+          this.targetOverride,
+        );
         this.sessionConversationId = conversationId;
       }
 

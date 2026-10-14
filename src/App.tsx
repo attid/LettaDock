@@ -39,6 +39,79 @@ function ConnBadge() {
   );
 }
 
+// TARGET-1: per-conversation execution target selector (cloud | computer).
+// Session-scoped: applies when the conversation's session reopens.
+function TargetSelector() {
+  const conversationId = useAppStore((s) => s.selectedConversationId);
+  const targets = useAppStore((s) => s.targetsByConversation);
+  const setTarget = useAppStore((s) => s.setConversationTarget);
+  const profiles = useAppStore((s) => s.profiles);
+  const profileId = useAppStore((s) => s.selectedProfileId);
+  const [open, setOpen] = useState(false);
+
+  const target = conversationId ? targets[conversationId] : undefined;
+  // Default = the profile's auto-discovered computer (back-compat).
+  const profile = profiles.find((p) => p.id === profileId);
+  const effective: string =
+    target === "cloud"
+      ? "cloud"
+      : target
+        ? target.name
+        : (profile?.computerName ?? "—");
+
+  if (!conversationId) return null;
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        title="Где исполняются инструменты этого диалога"
+      >
+        <span>исполнение: {effective}</span>
+        <span className="text-[10px]">▼</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-5 z-40 w-56 rounded-md border bg-popover p-1 shadow-xl">
+          <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+            исполнение диалога
+          </div>
+          <button
+            onClick={() => {
+              setTarget(conversationId, "cloud");
+              setOpen(false);
+            }}
+            className={cn(
+              "flex w-full items-center rounded px-2 py-1.5 text-left text-xs hover:bg-secondary",
+              target === "cloud" && "font-semibold text-foreground",
+            )}
+          >
+            ☁️ облако (managed sandbox)
+          </button>
+          {profile?.computerName && (
+            <button
+              onClick={() => {
+                // deviceId resolution lives in the adapter; by name works.
+                setTarget(conversationId, {
+                  deviceId: profile.computerName ?? "",
+                  name: profile.computerName ?? "",
+                });
+                setOpen(false);
+              }}
+              className={cn(
+                "flex w-full items-center rounded px-2 py-1.5 text-left text-xs hover:bg-secondary",
+                target !== "cloud" && "font-semibold text-foreground",
+              )}
+            >
+              🖥 {profile.computerName}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ModelBadge() {
   const modelInfo = useAppStore((s) => s.modelInfo);
   const setModel = useAppStore((s) => s.setModel);
@@ -149,6 +222,7 @@ function App() {
               : "LettaDock"}
           </div>
           <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+            <TargetSelector />
             <ModelBadge />
             <ConnBadge />
           </div>

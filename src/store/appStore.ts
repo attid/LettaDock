@@ -387,6 +387,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       liveConversationId = id;
     }
+    // TARGET-1: pass the conversation's execution target to the session
+    // ("cloud" overrides the computer; undefined keeps profile default).
+    const convTarget = get().targetsByConversation[id];
+    live.setTarget(convTarget);
     try {
       await live.loadHistory(id);
       // Model + context usage (PWA parity). Non-fatal on failure.

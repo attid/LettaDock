@@ -259,31 +259,44 @@ export class CloudLettaAdapter implements LettaAdapter {
     }
   }
 
-  /** Open a live session for sending/streaming. Tools run on the profile's computer when set. */
+  /** Open a live session for sending/streaming.
+   *  targetOverride: "cloud" → managed sandbox; {deviceId,name} → that
+   *  computer; undefined → profile default (auto-discovered computer). */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async openSession(conversationId: string, computerName?: string): Promise<any> {
+  async openSession(
+    conversationId: string,
+    computerName?: string,
+    targetOverride?: "cloud" | { deviceId: string; name: string } | null,
+  ): Promise<any> {
     const client = await this.sdk();
     const options: Record<string, unknown> = {};
-    const computer = computerName ?? this.profile.computerName;
-    // connectionId ROTATES on device reconnect (log-verified: session ready()
-    // died with 'Connection error' on a stale conn-… id; the fresh one from a
-    // new /v1/environments fetch works). Resolve by deviceId immediately
-    // before opening; deviceId is stable.
-    if (computer && this.lastOnlineDeviceId) {
-      const fresh = await this.proxy.getDeviceConnection(
-        this.lastOnlineDeviceId,
+    if (targetOverride === "cloud") {
+      // No computer option → SDK creates a managed sandbox for the session.
+      await log("openSession: target=cloud (managed sandbox)");
+    } else if (targetOverride) {
+      // Stable deviceId wins (connectionId rotates — log-verified).
+      options.computer = { deviceId: targetOverride.deviceId };
+      await log(
+        `openSession: target override deviceId=${targetOverride.deviceId} (${targetOverride.name})`,
       );
-      if (fresh?.connectionId) {
-        options.computer = { connectionId: fresh.connectionId };
-        await log(
-          `openSession: using fresh connectionId=${fresh.connectionId} (device=${this.lastOnlineDeviceId})`,
+    } else {
+      const computer = computerName ?? this.profile.computerName;
+      if (computer && this.lastOnlineDeviceId) {
+        const fresh = await this.proxy.getDeviceConnection(
+          this.lastOnlineDeviceId,
         );
-      } else {
+        if (fresh?.connectionId) {
+          options.computer = { connectionId: fresh.connectionId };
+          await log(
+            `openSession: using fresh connectionId=${fresh.connectionId} (device=${this.lastOnlineDeviceId})`,
+          );
+        } else {
+          options.computer = { name: computer };
+          await log(`openSession: no fresh connection — falling back to name=${computer}`);
+        }
+      } else if (computer) {
         options.computer = { name: computer };
-        await log(`openSession: no fresh connection — falling back to name=${computer}`);
       }
-    } else if (computer) {
-      options.computer = { name: computer };
     }
     await log(
       `openSession: conv=${conversationId} computer=${JSON.stringify(options.computer ?? null)}…`,
