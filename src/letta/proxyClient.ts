@@ -131,8 +131,8 @@ export class LettaProxyClient {
     conversationId: string,
     query?: Record<string, string | undefined>,
   ): Promise<unknown[]> {
-    // Verified: GET /v1/conversations/{id}/messages -> bare array
-    // (the {messages:[...]} envelope is the SDK transport, not the API).
+    // API returns newest-first by default with limit; we fetch the last N
+    // (order=desc) then let the adapter reverse to chronological order.
     const res = await invokeProxy(
       "GET",
       `/v1/conversations/${encodeURIComponent(conversationId)}/messages`,

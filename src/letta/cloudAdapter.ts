@@ -33,6 +33,42 @@ async function log(msg: string): Promise<void> {
   }
 }
 
+/**
+ * user_message content may arrive as a string, or as a JSON-stringified
+ * array of content parts (e.g. [{type:'text',text:'…'},{type:'image',…}]).
+ * Normalize to displayable text.
+ */
+function normalizeContent(content: unknown): string | undefined {
+  if (typeof content === "string") {
+    // Stringified parts array → extract text parts.
+    if (content.startsWith("[") || content.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed)) {
+          const texts = parsed
+            .filter((p) => p?.type === "text" && typeof p.text === "string")
+            .map((p) => p.text);
+          if (texts.length) return texts.join("\n");
+          const kinds = parsed.map((p) => p?.type).filter(Boolean);
+          return kinds.length ? `[${kinds.join(", ")}]` : content;
+        }
+      } catch {
+        /* plain string that happens to start with [ */
+      }
+    }
+    return content;
+  }
+  if (Array.isArray(content)) {
+    const texts = content
+      .filter((p) => p?.type === "text" && typeof p.text === "string")
+      .map((p) => p.text);
+    if (texts.length) return texts.join("\n");
+    const kinds = content.map((p) => p?.type).filter(Boolean);
+    return kinds.length ? `[${kinds.join(", ")}]` : undefined;
+  }
+  return undefined;
+}
+
 export class CloudLettaAdapter implements LettaAdapter {
   private apiKey: string;
   private profile: ServerProfile;
@@ -127,20 +163,27 @@ export class CloudLettaAdapter implements LettaAdapter {
   async getHistory(conversationId: string, limit = 50): Promise<LettaMessage[]> {
     await log(`getHistory: conv=${conversationId} limit=${limit} via proxy…`);
     try {
+      // API default order is DESC (newest first). Fetch last N, then reverse
+      // to ASC for chat rendering (oldest on top).
       const arr = (await this.proxy.listMessages(conversationId, {
         limit: String(limit),
+        order: "desc",
       })) as Array<{
         id: string;
         date: string;
+        seq_id?: number;
         message_type?: string;
         content?: string;
       }>;
-      await log(`getHistory: OK, ${arr.length} messages`);
+      arr.reverse();
+      await log(
+        `getHistory: OK, ${arr.length} messages (asc, seq ${arr[0]?.seq_id ?? "?"}..${arr[arr.length - 1]?.seq_id ?? "?"})`,
+      );
       return arr.map((m) => ({
         id: m.id,
         date: m.date,
         messageType: m.message_type ?? "unknown",
-        content: typeof m.content === "string" ? m.content : undefined,
+        content: normalizeContent(m.content),
         raw: m,
       }));
     } catch (e) {
