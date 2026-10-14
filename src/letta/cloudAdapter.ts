@@ -305,6 +305,18 @@ export class CloudLettaAdapter implements LettaAdapter {
     return this.proxy.retrieveConversation(conversationId);
   }
 
+  /** Create an ephemeral sandbox for file uploads. */
+  async createSandbox(
+    agentId: string,
+    conversationId?: string,
+  ): Promise<{ sandboxId: string }> {
+    return this.proxy.createSandbox(agentId, conversationId);
+  }
+
+  async terminateSandbox(sandboxId: string): Promise<void> {
+    return this.proxy.terminateSandbox(sandboxId);
+  }
+
   /** List available models via the session (503 entries, live-verified). */
   async listSessionModels(
     conversationId: string,

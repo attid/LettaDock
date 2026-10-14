@@ -53,6 +53,7 @@ pub fn run() {
             read_local_letta_key,
             append_debug_log,
             proxy::proxy_letta_api,
+            proxy::proxy_upload_file,
             clipboard::read_clipboard_image,
             clipboard::read_clipboard_text
         ])

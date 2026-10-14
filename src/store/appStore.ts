@@ -79,6 +79,18 @@ interface AppState {
   modelInfo: import("../letta/modelInfo").ConversationModelInfo | null;
   setModel: (model: string) => Promise<void>;
 
+  // ATTACH-2: attach a non-image file to the current conversation.
+  // Uploads to the conversation sandbox and returns the path for the
+  // composer to insert as text (agent reads files from its filesystem).
+  attachFile: (
+    conversationId: string,
+    file: File,
+  ) => Promise<{ path: string; name: string }>;
+  /** Session API key of the active profile (for upload commands). */
+  getProfileKey: () => string | null;
+  /** Agent id of the selected agent (sandbox is agent-scoped). */
+  getSelectedAgentId: () => string | null;
+
   // Selection
   selectedProfileId: string | null;
   selectedAgentId: string | null;
@@ -404,6 +416,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { extractModelInfo } = await import("../letta/modelInfo");
     set({ modelInfo: extractModelInfo(conv, messages) });
   },
+
+  attachFile: async (conversationId, file) => {
+    const profileId = get().selectedProfileId;
+    const adapter = profileId ? adapters.get(profileId) : undefined;
+    const agentId = get().selectedAgentId;
+    if (!adapter || !agentId) {
+      throw new Error("Нет подключения или агента");
+    }
+    L(`attachFile: ${file.name} (${file.size}b) → sandbox`);
+    const { sandboxId } = await adapter.createSandbox(agentId, conversationId);
+    const { uploadFileMultipart } = await import("../letta/upload");
+    const apiKey = (await resolveKey(profileId ?? "")) ?? "";
+    try {
+      const uploaded = await uploadFileMultipart(apiKey, sandboxId, file);
+      L(`attachFile: uploaded → ${uploaded.path}`);
+      return uploaded;
+    } finally {
+      // Fire-and-forget: sandbox not needed after upload completes.
+      void adapter.terminateSandbox(sandboxId).catch(() => {});
+    }
+  },
+
+  getProfileKey: () => {
+    const profileId = get().selectedProfileId;
+    return profileId ? (sessionKeys.get(profileId) ?? null) : null;
+  },
+
+  getSelectedAgentId: () => get().selectedAgentId,
 
   sendMessage: async (text) => {
     const conversationId = get().selectedConversationId;

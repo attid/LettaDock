@@ -1,7 +1,8 @@
+import { useRef, useState } from "react";
 import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive } from "@assistant-ui/react";
 import type { TextMessagePartProps, ToolCallMessagePartProps } from "@assistant-ui/react";
 import { MarkdownText } from "./MarkdownText";
-import { SendHorizontal, Square, Wrench } from "lucide-react";
+import { SendHorizontal, Square, Wrench, Paperclip } from "lucide-react";
 import { useAppStore } from "../store/appStore";
 import { usePendingImages } from "./pendingImages";
 import { prepareImage } from "./images";
@@ -64,6 +65,32 @@ const Composer = () => {
   // Images insert a [N] marker at the cursor, TUI-style: user writes
   // "кнопка [] а тут буква []" interleaved with markers; ChatRuntime splits
   // the text on markers into alternating text/image content parts on send.
+  // ATTACH-2: paperclip — upload non-image file to the conversation sandbox,
+  // insert its path as text so the agent can read it from the filesystem.
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [attaching, setAttaching] = useState(false);
+
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setAttaching(true);
+    try {
+      const conversationId = useAppStore.getState().selectedConversationId;
+      if (!conversationId) return;
+      const uploaded = await useAppStore
+        .getState()
+        .attachFile(conversationId, file);
+      insertAtCursor(`\n[файл: ${uploaded.path}]\n`);
+    } catch (err) {
+      void import("../letta/localKey").then(({ appendDebugLog }) =>
+        appendDebugLog(`[attach] FAILED ${String(err).slice(0, 150)}`).catch(() => {}),
+      );
+    } finally {
+      setAttaching(false);
+    }
+  };
+
   const onCtrlV = (e: React.KeyboardEvent) => {
     // Layout-independent: e.key follows the active layout (ru: 'ъ'),
     // e.code is the physical key (KeyV) — use code, per owner feedback.
@@ -181,6 +208,23 @@ const Composer = () => {
           onPaste={addFromClipboard}
           className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1 text-sm outline-none placeholder:text-muted-foreground"
         />
+        {attaching && (
+          <span className="p-2 text-xs text-muted-foreground">загрузка…</span>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          onChange={onPickFile}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={running || attaching}
+          title="Прикрепить файл (загрузится в песочницу агента)"
+          className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
+        >
+          <Paperclip className="h-4 w-4" />
+        </button>
         {running ? (
           <ComposerPrimitive.Cancel className="rounded-md bg-destructive p-2 text-destructive-foreground">
             <Square className="h-4 w-4" />

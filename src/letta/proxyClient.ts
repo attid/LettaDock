@@ -166,6 +166,34 @@ export class LettaProxyClient {
     );
   }
 
+  /**
+   * Multipart upload runs via the Rust command proxy_upload_file (see
+   * upload.ts) — FormData can't pass through the JSON proxy.
+   * Flow (verified live): POST create → POST files → terminate.
+   */
+  async createSandbox(
+    agentId: string,
+    conversationId?: string,
+  ): Promise<{ sandboxId: string }> {
+    return (await invokeProxy(
+      "POST",
+      `/v1/agents/${encodeURIComponent(agentId)}/sandboxes`,
+      this.apiKey,
+      undefined,
+      conversationId ? { conversationId } : {},
+    )) as { sandboxId: string };
+  }
+
+  async terminateSandbox(sandboxId: string): Promise<void> {
+    await invokeProxy(
+      "POST",
+      `/v1/sandboxes/${encodeURIComponent(sandboxId)}/terminate`,
+      this.apiKey,
+      undefined,
+      {},
+    );
+  }
+
   /** Fetch a fresh connection record by device id (connectionId rotates on reconnect). */
   async getDeviceConnection(deviceId: string): Promise<{
     connectionId?: string;

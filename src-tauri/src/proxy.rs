@@ -64,3 +64,40 @@ pub async fn proxy_letta_api(req: ProxyRequest) -> Result<ProxyResponse, String>
     let body = resp.text().await.map_err(|e| e.to_string())?;
     Ok(ProxyResponse { status, body })
 }
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadRequest {
+    pub sandbox_id: String,
+    pub api_key: String,
+    pub file_name: String,
+    pub mime_type: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Multipart upload of one file to /v1/sandboxes/{id}/files.
+/// FormData cannot pass through the JSON proxy command — this mirrors the
+/// proxy principle: the webview never talks to api.letta.com directly.
+#[tauri::command]
+pub async fn proxy_upload_file(req: UploadRequest) -> Result<ProxyResponse, String> {
+    let part = reqwest::blocking::Part::bytes(req.bytes)
+        .file_name(req.file_name.clone())
+        .mime_str(&req.mime_type)
+        .map_err(|e| e.to_string())?;
+    let url = format!(
+        "https://api.letta.com/v1/sandboxes/{}/files",
+        urlencoding::encode(&req.sandbox_id)
+    );
+    let form = reqwest::blocking::multipart::Form::new().part("file", part);
+
+    let resp = reqwest::blocking::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", req.api_key))
+        .multipart(form)
+        .send()
+        .map_err(|e| format!("upload failed: {e}"))?;
+
+    let status = resp.status().as_u16();
+    let body = resp.text().map_err(|e| e.to_string())?;
+    Ok(ProxyResponse { status, body })
+}
