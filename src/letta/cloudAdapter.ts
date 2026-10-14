@@ -98,7 +98,7 @@ export class CloudLettaAdapter implements LettaAdapter {
         id: string;
         name?: string;
         created_at?: string;
-        last_modification_date?: string;
+        updated_at?: string;
       }>;
       await log(`listConversations: OK, ${arr.length} conversations`);
       return arr.map((c) => ({
@@ -106,7 +106,7 @@ export class CloudLettaAdapter implements LettaAdapter {
         agentId,
         name: c.name ?? "",
         createdAt: c.created_at ?? "",
-        lastMessageAt: c.last_modification_date,
+        lastMessageAt: c.updated_at,
       }));
     } catch (e) {
       await log(`listConversations: ERROR ${e instanceof Error ? e.message : String(e)}`);

@@ -68,11 +68,13 @@ export class LettaProxyClient {
     agentId: string,
     query?: Record<string, string | undefined>,
   ): Promise<unknown[]> {
+    // Verified: GET /v1/conversations?agent_id=... -> bare array
+    // (agent-scoped subpath /v1/agents/{id}/conversations is 404).
     const res = await invokeProxy(
       "GET",
-      `/v1/agents/${encodeURIComponent(agentId)}/conversations`,
+      "/v1/conversations",
       this.apiKey,
-      query,
+      { agent_id: agentId, ...query },
     );
     if (Array.isArray(res)) return res;
     const r = res as { conversations?: unknown[]; items?: unknown[] };
@@ -83,14 +85,17 @@ export class LettaProxyClient {
     conversationId: string,
     query?: Record<string, string | undefined>,
   ): Promise<unknown[]> {
+    // Verified: GET /v1/conversations/{id}/messages -> bare array
+    // (the {messages:[...]} envelope is the SDK transport, not the API).
     const res = await invokeProxy(
       "GET",
       `/v1/conversations/${encodeURIComponent(conversationId)}/messages`,
       this.apiKey,
       query,
     );
-    const r = res as { messages?: unknown[] } | unknown[];
-    return Array.isArray(r) ? r : (r.messages ?? []);
+    if (Array.isArray(res)) return res;
+    const r = res as { messages?: unknown[]; items?: unknown[] };
+    return r.messages ?? r.items ?? [];
   }
 
   async listEnvironments(
