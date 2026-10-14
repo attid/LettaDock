@@ -157,6 +157,15 @@ export class LettaProxyClient {
     return Array.isArray(r) ? r : (r.connections ?? []);
   }
 
+  /** GET /v1/conversations/{id} — model, context_window_limit, in_context ids. */
+  async retrieveConversation(conversationId: string): Promise<unknown> {
+    return invokeProxy(
+      "GET",
+      `/v1/conversations/${encodeURIComponent(conversationId)}`,
+      this.apiKey,
+    );
+  }
+
   /** Fetch a fresh connection record by device id (connectionId rotates on reconnect). */
   async getDeviceConnection(deviceId: string): Promise<{
     connectionId?: string;

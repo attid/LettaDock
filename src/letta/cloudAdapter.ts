@@ -299,6 +299,40 @@ export class CloudLettaAdapter implements LettaAdapter {
     }
   }
 
+  /** Conversation record: model, context_window_limit, in_context ids. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async retrieveConversationRaw(conversationId: string): Promise<any> {
+    return this.proxy.retrieveConversation(conversationId);
+  }
+
+  /** List available models via the session (503 entries, live-verified). */
+  async listSessionModels(
+    conversationId: string,
+  ): Promise<{ entries: any[]; availableHandles: string[] | null }> {
+    const client = await this.sdk();
+    const session = client.resumeSession(conversationId);
+    try {
+      await session.ready();
+      const res = await session.listModels();
+      return { entries: res.entries ?? [], availableHandles: res.availableHandles ?? null };
+    } finally {
+      session.close();
+    }
+  }
+
+  /** Change conversation model. Named conversations → conversation scope. */
+  async updateSessionModel(conversationId: string, model: string): Promise<void> {
+    const client = await this.sdk();
+    const session = client.resumeSession(conversationId);
+    try {
+      await session.ready();
+      const res = await session.updateModel({ model });
+      await log(`updateSessionModel: ${model} appliedTo=${res.appliedTo ?? "?"}`);
+    } finally {
+      session.close();
+    }
+  }
+
   async close(): Promise<void> {
     if (this.client) {
       await log("adapter close()");

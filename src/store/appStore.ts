@@ -75,6 +75,10 @@ interface AppState {
     target: ConversationTarget,
   ) => void;
 
+  // Model + context (PWA parity, owner request 2026-10-14)
+  modelInfo: import("../letta/modelInfo").ConversationModelInfo | null;
+  setModel: (model: string) => Promise<void>;
+
   // Selection
   selectedProfileId: string | null;
   selectedAgentId: string | null;
@@ -130,7 +134,8 @@ function saveTargets(targets: Record<string, ConversationTarget>) {
 //      read it through a tiny Tauri command in src-tauri)
 // Secure storage migration is still Phase 5 (spec).
 const sessionKeys = new Map<string, string>();
-const adapters = new Map<string, CloudLettaAdapter>();
+import { adapters as adaptersRegistry } from "./adapters";
+const adapters = adaptersRegistry;
 // One live manager for the currently open conversation.
 let live: LiveSessionManager | null = null;
 let liveConversationId: string | null = null;
@@ -173,6 +178,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   agentsByProfile: {},
   conversationsByAgent: {},
   liveMessages: [],
+  modelInfo: null,
   targetsByConversation: loadTargets(),  historyLoading: false,
   turnState: { phase: "idle", streamText: "", toolCalls: {} },
   connectionStatus: {},
@@ -371,9 +377,32 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     try {
       await live.loadHistory(id);
+      // Model + context usage (PWA parity). Non-fatal on failure.
+      try {
+        const conv = await adapter.retrieveConversationRaw(id);
+        const messages = get().liveMessages;
+        const { extractModelInfo } = await import("../letta/modelInfo");
+        set({ modelInfo: extractModelInfo(conv, messages) });
+      } catch (e) {
+        L(`model info load failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
     } finally {
       set({ historyLoading: false });
     }
+  },
+
+  setModel: async (model) => {
+    const conversationId = get().selectedConversationId;
+    const profileId = get().selectedProfileId;
+    const adapter = profileId ? adapters.get(profileId) : undefined;
+    if (!conversationId || !adapter) return;
+    L(`setModel: ${model} on ${conversationId}`);
+    await adapter.updateSessionModel(conversationId, model);
+    // Refresh info after change.
+    const conv = await adapter.retrieveConversationRaw(conversationId);
+    const messages = get().liveMessages;
+    const { extractModelInfo } = await import("../letta/modelInfo");
+    set({ modelInfo: extractModelInfo(conv, messages) });
   },
 
   sendMessage: async (text) => {
