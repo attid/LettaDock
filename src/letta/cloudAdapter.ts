@@ -171,13 +171,21 @@ export class CloudLettaAdapter implements LettaAdapter {
       }>;
       await log(`listConversations: OK, ${arr.length} conversations`);
       // Cloud conversations have name=None; API-derived title from summary.
-      return arr.map((c) => ({
+      // API order is arbitrary — sort by updated_at DESC (recent on top),
+      // owner expectation: conversations you just wrote in come first.
+      const mapped = arr.map((c) => ({
         id: c.id,
         agentId,
         name: c.name || c.summary?.slice(0, 60) || c.id,
         createdAt: c.created_at ?? "",
         lastMessageAt: c.updated_at,
       }));
+      mapped.sort((a, b) =>
+        (b.lastMessageAt ?? b.createdAt).localeCompare(
+          a.lastMessageAt ?? a.createdAt,
+        ),
+      );
+      return mapped;
     } catch (e) {
       await log(`listConversations: ERROR ${e instanceof Error ? e.message : String(e)}`);
       throw e;

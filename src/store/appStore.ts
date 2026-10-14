@@ -91,6 +91,34 @@ interface AppState {
   ) => Promise<void>;
   abortTurn: () => Promise<void>;
   refreshConversation: () => Promise<void>;
+
+  // TARGET-1: per-conversation execution target
+  /** "cloud" = managed sandbox; anything else = computer name/deviceId. */
+  setConversationTarget: (
+    conversationId: string,
+    target: "cloud" | { deviceId: string; name: string },
+  ) => void;
+}
+
+// Per-conversation execution target (session-scoped, SDK-verified:
+// resumeSession(computer) overrides client default for that session only).
+// Persisted per conversation id.
+const TARGETS_KEY = "lettadock.targets.v1";
+
+type ConversationTarget = "cloud" | { deviceId: string; name: string };
+
+function loadTargets(): Record<string, ConversationTarget> {
+  try {
+    const raw = localStorage.getItem(TARGETS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+function saveTargets(targets: Record<string, ConversationTarget>) {
+  localStorage.setItem(TARGETS_KEY, JSON.stringify(targets));
 }
 
 // In-memory session keys, NOT persisted. BUT: to avoid re-entering the key
@@ -145,7 +173,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   agentsByProfile: {},
   conversationsByAgent: {},
   liveMessages: [],
-  historyLoading: false,
+  targetsByConversation: loadTargets(),  historyLoading: false,
   turnState: { phase: "idle", streamText: "", toolCalls: {} },
   connectionStatus: {},
   selectedProfileId: loadSelection().profileId,
@@ -375,5 +403,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     const conversationId = get().selectedConversationId;
     if (!conversationId || !live) return;
     await live.loadHistory(conversationId);
+  },
+
+  // TARGET-1: set where THIS conversation's tools run. Takes effect on the
+  // next session open (current live session keeps running).
+  setConversationTarget: (conversationId, target) => {
+    const targets = loadTargets();
+    targets[conversationId] = target;
+    saveTargets(targets);
+    // Drop the live session so the next send reopens with the new target.
+    if (live && liveConversationId === conversationId) {
+      void live.dispose();
+      live = null;
+      liveConversationId = null;
+    }
+    set({ targetsByConversation: { ...targets } });
+    L(`setConversationTarget: ${conversationId} → ${target === "cloud" ? "cloud" : target.name}`);
   },
 }));
