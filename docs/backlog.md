@@ -5,17 +5,30 @@ each needs explicit GO before implementation (per spec §7).
 
 ## UX
 
-### DELETE-1: Profile deletion confirmation (owner request 2026-10-14)
-Remove button currently deletes instantly — too easy to hit accidentally.
-Design: two-step (first click arms → «Удалить?» inline confirm / second
-click deletes; auto-disarm after ~3s or on blur). Consider same pattern
-for conversation actions later.
+### CWD-1: рабочая директория как в PWA (owner request 2026-10-14)
+Выбор cwd для диалога (как выбор проектов в PWA: ~/.letta/projects —
+home_itolstov, ..._Projects, ..._Documents и т.д.). SDK: cwd в
+CreateSessionOptions + session.changeDeviceState({cwd}) для живой сессии.
+UI: селектор рядом с исполнением в шапке. Пер-диалог, как TARGET-1.
+НЕ ДЕЛАТЬ ДО КОМАНДЫ.
 
-### UX-2: Remove stale profiles automatically
-Profiles referencing lost session keys show repeated errors on startup.
-Offer one-click «очистить нерабочие профили» instead of N manual deletes.
+### UX-2: копировать сообщение (owner request 2026-10-14)
+Кнопка на сообщении — текст в буфер.
 
-### UX-3: Connection error surfaced better
+### UX-3: форк диалога от сообщения (owner request 2026-10-14)
+Ветка от произвольного сообщения. SDK: client.conversations.fork(id,
+{messageId}). Кнопка рядом с копированием.
+
+### UX-4: тул-коллы свёрнуты по дефолту (owner request 2026-10-14)
+Строка «иконка+имя», клик раскрывает аргументы/результат. Как в вебе.
+
+### UX-5: создание нового чата/сессии (owner request 2026-10-14)
+Кнопка «новый диалог» у агента. SDK: createSession(agentId) → новый conv.
+
+### DELETE-1: Profile deletion confirmation (owner request 2026-10-14) — DONE
+Two-step (arm 3s → confirm). f59802c.
+
+### UX-3 (старое): Connection error surfaced better
 Error banner is small; add retry button next to it (re-run connect()).
 
 ### ATTACH-1: Ctrl+V paste images + file attachments (owner request 2026-10-14)
