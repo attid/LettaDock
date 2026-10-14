@@ -51,10 +51,14 @@ export const MyThread = () => (
       <ComposerPrimitive.Root className="flex items-end gap-2 rounded-lg border bg-card p-2 focus-within:ring-1 focus-within:ring-ring">
         <ComposerPrimitive.Input
           rows={1}
-          placeholder="Написать сообщение… (мок)"
-          className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1 text-sm outline-none placeholder:text-muted-foreground"
+          placeholder="Read-only: отправка сообщений появится в Phase 3"
+          disabled
+          className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
         />
-        <ComposerPrimitive.Send className="rounded-md bg-primary p-2 text-primary-foreground disabled:opacity-50">
+        <ComposerPrimitive.Send
+          disabled
+          className="rounded-md bg-primary p-2 text-primary-foreground disabled:opacity-50"
+        >
           <SendHorizontal className="h-4 w-4" />
         </ComposerPrimitive.Send>
       </ComposerPrimitive.Root>

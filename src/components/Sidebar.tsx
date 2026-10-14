@@ -1,73 +1,207 @@
-import { Server, Bot, MessageSquare, Cloud, HardDrive } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  Cloud,
+  HardDrive,
+  MessageSquare,
+  Plus,
+  Server,
+  Bot,
+  Loader2,
+  Trash2,
+  AlertCircle,
+  CheckCircle2,
+} from "lucide-react";
 import { useAppStore } from "../store/appStore";
 import { cn } from "../lib/utils";
 
+function ConnectDialog({ onClose }: { onClose: () => void }) {
+  const addProfile = useAppStore((s) => s.addProfile);
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const name = String(fd.get("name") || "Letta Cloud").trim();
+    const apiKey = String(fd.get("apiKey") || "").trim();
+    if (!apiKey) return;
+    addProfile(name, "cloud", apiKey);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <form
+        onSubmit={handleSubmit}
+        className="w-96 rounded-lg border bg-card p-5 shadow-xl"
+      >
+        <div className="mb-4 text-lg font-semibold">Добавить профиль</div>
+        <label className="mb-3 block text-sm">
+          <span className="mb-1 block text-muted-foreground">Название</span>
+          <input
+            name="name"
+            defaultValue="Letta Cloud"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+          />
+        </label>
+        <label className="mb-4 block text-sm">
+          <span className="mb-1 block text-muted-foreground">API-ключ</span>
+          <input
+            name="apiKey"
+            type="password"
+            required
+            placeholder="LETTER… ключ хранится только в памяти сессии"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+          />
+        </label>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Phase 2: ключ не сохраняется на диск (ни localStorage, ни файлы) —
+          живёт в памяти, пока запущено приложение. Постоянное хранение — в
+          Phase 5 через secure storage.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-secondary"
+          >
+            Отмена
+          </button>
+          <button
+            type="submit"
+            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"
+          >
+            Добавить
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function Sidebar() {
   const {
-    servers,
-    agents,
-    conversations,
-    selectedServerId,
+    profiles,
+    agentsByProfile,
+    conversationsByAgent,
+    connectionStatus,
+    selectedProfileId,
     selectedAgentId,
     selectedConversationId,
-    selectServer,
+    selectProfile,
     selectAgent,
     selectConversation,
+    disconnect,
   } = useAppStore();
 
-  const visibleAgents = agents.filter((a) => a.serverId === selectedServerId);
-  const visibleConversations = conversations.filter(
-    (c) => c.agentId === selectedAgentId,
-  );
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const agents = selectedProfileId
+    ? (agentsByProfile[selectedProfileId] ?? [])
+    : [];
+  const conversations = selectedAgentId
+    ? (conversationsByAgent[selectedAgentId] ?? [])
+    : [];
+
+  useEffect(() => {
+    // Auto-connect the last-selected profile on startup.
+    if (selectedProfileId && profiles.some((p) => p.id === selectedProfileId)) {
+      const status = connectionStatus[selectedProfileId]?.state;
+      if (!status || status === "disconnected") {
+        // Key is gone after restart (session-only by design); profile exists
+        // but cannot auto-connect — needs re-entry. Nothing to do silently.
+      }
+    }
+  }, [selectedProfileId, profiles, connectionStatus]);
 
   return (
     <aside className="flex h-full w-72 shrink-0 flex-col border-r bg-card/50">
-      {/* Servers */}
+      {/* Servers / profiles */}
       <div className="border-b p-3">
-        <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <Server className="h-3.5 w-3.5" /> Серверы (мок)
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <Server className="h-3.5 w-3.5" /> Серверы
+          </div>
+          <button
+            onClick={() => setDialogOpen(true)}
+            title="Добавить профиль"
+            className="rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
         </div>
         <div className="space-y-1">
-          {servers.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => selectServer(s.id)}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left",
-                selectedServerId === s.id
-                  ? "bg-secondary font-medium text-foreground"
-                  : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
-              )}
-            >
-              {s.kind === "cloud" ? (
-                <Cloud className="h-4 w-4 shrink-0" />
-              ) : (
-                <HardDrive className="h-4 w-4 shrink-0" />
-              )}
-              <span className="flex-1 truncate">{s.name}</span>
-              <span
-                className={cn(
-                  "h-1.5 w-1.5 shrink-0 rounded-full",
-                  s.status === "connected" ? "bg-emerald-500" : "bg-zinc-600",
-                )}
-              />
-            </button>
-          ))}
+          {profiles.length === 0 && (
+            <div className="px-2 py-1 text-sm text-muted-foreground">
+              Нет профилей — добавь облачный
+            </div>
+          )}
+          {profiles.map((p) => {
+            const st = connectionStatus[p.id]?.state ?? "disconnected";
+            const err = connectionStatus[p.id]?.error;
+            return (
+              <div key={p.id} className="group relative">
+                <button
+                  onClick={() => selectProfile(p.id)}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 pr-8 text-sm text-left",
+                    selectedProfileId === p.id
+                      ? "bg-secondary font-medium text-foreground"
+                      : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
+                  )}
+                >
+                  {p.kind === "cloud" ? (
+                    <Cloud className="h-4 w-4 shrink-0" />
+                  ) : (
+                    <HardDrive className="h-4 w-4 shrink-0" />
+                  )}
+                  <span className="flex-1 truncate">{p.name}</span>
+                  {st === "connecting" && (
+                    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+                  )}
+                  {st === "connected" && (
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                  )}
+                  {st === "error" && (
+                    <span
+                      className="shrink-0"
+                      title={err}
+                    >
+                      <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+                    </span>
+                  )}
+                  {st === "disconnected" && (
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-600" />
+                  )}
+                </button>
+                <button
+                  onClick={() => void disconnect(p.id)}
+                  title="Отключить"
+                  className="absolute right-2 top-1.5 hidden rounded p-1 text-muted-foreground hover:text-foreground group-hover:block"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            );
+          })}
         </div>
+        {selectedProfileId && connectionStatus[selectedProfileId]?.error && (
+          <div className="mt-2 rounded-md bg-red-950/40 px-2 py-1.5 text-xs text-red-300">
+            {connectionStatus[selectedProfileId].error}
+          </div>
+        )}
       </div>
 
       {/* Agents */}
       <div className="border-b p-3">
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <Bot className="h-3.5 w-3.5" /> Агенты (мок)
+          <Bot className="h-3.5 w-3.5" /> Агенты
         </div>
         <div className="space-y-1">
-          {visibleAgents.length === 0 && (
+          {agents.length === 0 && (
             <div className="px-2 py-1 text-sm text-muted-foreground">
-              Выбери сервер
+              {selectedProfileId ? "Загрузка…" : "Выбери сервер"}
             </div>
           )}
-          {visibleAgents.map((a) => (
+          {agents.map((a) => (
             <button
               key={a.id}
               onClick={() => selectAgent(a.id)}
@@ -87,15 +221,15 @@ export function Sidebar() {
       {/* Conversations */}
       <div className="flex-1 overflow-y-auto p-3">
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <MessageSquare className="h-3.5 w-3.5" /> Диалоги (мок)
+          <MessageSquare className="h-3.5 w-3.5" /> Диалоги
         </div>
         <div className="space-y-1">
-          {visibleConversations.length === 0 && (
+          {conversations.length === 0 && (
             <div className="px-2 py-1 text-sm text-muted-foreground">
-              Выбери агента
+              {selectedAgentId ? "Загрузка…" : "Выбери агента"}
             </div>
           )}
-          {visibleConversations.map((c) => (
+          {conversations.map((c) => (
             <button
               key={c.id}
               onClick={() => selectConversation(c.id)}
@@ -106,18 +240,22 @@ export function Sidebar() {
                   : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
               )}
             >
-              <span className="flex-1 truncate">{c.title}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {c.lastActivity}
-              </span>
+              <span className="flex-1 truncate">{c.name || c.id}</span>
+              {c.lastMessageAt && (
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {new Date(c.lastMessageAt).toLocaleDateString()}
+                </span>
+              )}
             </button>
           ))}
         </div>
       </div>
 
       <div className="border-t p-3 text-xs text-muted-foreground">
-        Phase 1 · мок-данные, Letta не подключён
+        Phase 2 · read-only, отправка сообщений отключена
       </div>
+
+      {dialogOpen && <ConnectDialog onClose={() => setDialogOpen(false)} />}
     </aside>
   );
 }

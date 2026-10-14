@@ -12,6 +12,7 @@
   "dependencies": {
     "@assistant-ui/react": "^0.15.28",
     "@assistant-ui/react-markdown": "^0.14.21",
+    "@letta-ai/letta-agent-sdk": "^0.8.42",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
