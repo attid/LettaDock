@@ -97,18 +97,35 @@ const adapters = new Map<string, CloudLettaAdapter>();
 let live: LiveSessionManager | null = null;
 let liveConversationId: string | null = null;
 
+// Debug logging: every significant step goes to console AND to
+// /tmp/lettadock-ui.log (via Tauri command) so the agent can read it
+// without asking the user what's on screen.
+function L(msg: string) {
+  const line = `[ui ${new Date().toISOString().slice(11, 23)}] ${msg}`;
+  console.log(line);
+  void import("../letta/localKey").then(({ appendDebugLog }) =>
+    appendDebugLog(line).catch(() => {}),
+  );
+}
+
 async function resolveKey(profileId: string): Promise<string | undefined> {
+  L(`resolveKey: profile=${profileId} sessionKey=${sessionKeys.has(profileId)}`);
   const local = sessionKeys.get(profileId);
-  if (local) return local;
+  if (local) {
+    L("resolveKey: using session key");
+    return local;
+  }
   try {
+    L("resolveKey: invoking read_local_letta_key…");
     const { readLocalLettaKey } = await import("../letta/localKey");
     const key = await readLocalLettaKey();
+    L(`resolveKey: tauri returned ${key ? `key len=${key.length}` : "null/undefined"}`);
     if (key) {
       sessionKeys.set(profileId, key);
       return key;
     }
-  } catch {
-    /* no local key available */
+  } catch (e) {
+    L(`resolveKey: tauri invoke FAILED: ${e instanceof Error ? e.message : String(e)}`);
   }
   return undefined;
 }
@@ -127,6 +144,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   addProfile: (name, kind, apiKey, computerName) => {
     const id = `profile-${Date.now()}`;
+    L(`addProfile: name=${name} keyLen=${apiKey.length}`);
     const profile: ServerProfile = { id, name, kind, computerName };
     const profiles = [...get().profiles, profile];
     sessionKeys.set(id, apiKey);
@@ -137,6 +155,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   removeProfile: (id) => {
+    L(`removeProfile: ${id}`);
     const profiles = get().profiles.filter((p) => p.id !== id);
     sessionKeys.delete(id);
     saveProfiles(profiles);
@@ -151,10 +170,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   connect: async (profileId) => {
+    L(`connect: start profile=${profileId}`);
     const profile = get().profiles.find((p) => p.id === profileId);
-    if (!profile) return;
+    if (!profile) {
+      L(`connect: profile ${profileId} NOT FOUND in store`);
+      return;
+    }
     const apiKey = await resolveKey(profileId);
     if (!apiKey) {
+      L("connect: no key resolved → error state");
       set((s) => ({
         connectionStatus: {
           ...s.connectionStatus,
@@ -167,6 +191,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }));
       return;
     }
+    L(`connect: key resolved (len=${apiKey.length}), setting connecting…`);
     set((s) => ({
       connectionStatus: {
         ...s.connectionStatus,
@@ -175,8 +200,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
     try {
       const adapter = new CloudLettaAdapter(profile, apiKey);
+      L("connect: adapter created, discovering computers…");
       // Discover online computer once, use it for sessions.
       const computer = await adapter.findOnlineComputer();
+      L(`connect: online computer = ${computer ?? "NONE"}`);
       if (computer && !profile.computerName) {
         const updated = {
           ...profile,
@@ -187,7 +214,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           profiles: s.profiles.map((p) => (p.id === profileId ? updated : p)),
         }));
       }
+      L("connect: listing agents…");
       const agents = await adapter.listAgents();
+      L(`connect: agents listed = ${agents.length}`);
       adapters.set(profileId, adapter);
       set((s) => ({
         agentsByProfile: { ...s.agentsByProfile, [profileId]: agents },
@@ -202,8 +231,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           },
         },
       }));
+      L(`connect: SUCCESS (connected, computer=${computer ?? "none"})`);
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
+      L(`connect: FAILED: ${err.message || String(e)} | stack: ${err.stack?.slice(0, 300)}`);
       set((s) => ({
         connectionStatus: {
           ...s.connectionStatus,
@@ -267,6 +298,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   selectConversation: (id) => {
+    L(`selectConversation: ${id}`);
     set({ selectedConversationId: id, liveMessages: [], historyLoading: true });
     saveSelection({
       profileId: get().selectedProfileId,
@@ -277,9 +309,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   openConversation: async (id: string) => {
+    L(`openConversation: ${id}`);
     const profileId = get().selectedProfileId;
     const adapter = profileId ? adapters.get(profileId) : undefined;
     if (!adapter) {
+      L(`openConversation: NO ADAPTER for profile=${profileId}`);
       set({ historyLoading: false });
       return;
     }

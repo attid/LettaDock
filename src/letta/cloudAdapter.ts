@@ -1,12 +1,15 @@
-// Cloud adapter over @letta-ai/letta-agent-sdk — portable client entry.
-// Phase 3: switched from Node entry to /client (no node:child_process),
-// webSocketAuth: "query" (browser WS cannot set Authorization headers).
-// Verified shapes (see docs/phase2-api-notes.md + docs/phase3-session-notes.md):
-//   client.agents.list()                          -> Array (APIPromise unwraps ArrayPage)
-//   client.conversations.list({ agentId })        -> Array
-//   client.conversations.listMessages(convId,{})  -> { messages: [...] }
-//   client.computers.list()                       -> Array
-//   client.resumeSession(convId) -> session (send/stream/abort/close)
+// Cloud adapter.
+//
+// Phase 3.1: REST calls go through the Tauri Rust proxy (proxyClient.ts) —
+// api.letta.com omits CORS headers on /v1/environments, so browser fetch
+// dies with "Connection error" (log-verified 2026-10-14). Live sessions
+// still use the SDK client entry for WebSocket relay streaming.
+//
+// Endpoint shapes (verified via curl):
+//   GET /v1/agents/                                      -> bare array
+//   GET /v1/agents/{id}/conversations                    -> array | {conversations}
+//   GET /v1/conversations/{id}/messages                  -> {messages: [...]}
+//   GET /v1/environments                                 -> {connections: [...]}
 import type {
   AgentSummary,
   ConversationSummary,
@@ -14,13 +17,26 @@ import type {
   LettaMessage,
   ServerProfile,
 } from "./types";
+import { LettaProxyClient } from "./proxyClient";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SdkClient = any;
 
+async function log(msg: string): Promise<void> {
+  const line = `[sdk ${new Date().toISOString().slice(11, 23)}] ${msg}`;
+  console.log(line);
+  try {
+    const { appendDebugLog } = await import("./localKey");
+    await appendDebugLog(line);
+  } catch {
+    /* best-effort */
+  }
+}
+
 export class CloudLettaAdapter implements LettaAdapter {
   private apiKey: string;
   private profile: ServerProfile;
+  private proxy: LettaProxyClient;
   private client: SdkClient | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private sdkPromise: Promise<any> | null = null;
@@ -28,90 +44,123 @@ export class CloudLettaAdapter implements LettaAdapter {
   constructor(profile: ServerProfile, apiKey: string) {
     this.profile = profile;
     this.apiKey = apiKey;
+    this.proxy = new LettaProxyClient(apiKey);
+    void log(
+      `adapter ctor: profile=${profile.id} computer=${profile.computerName ?? "auto"} keyLen=${apiKey.length}`,
+    );
   }
 
-  private async sdk(): Promise<SdkClient> {
+  /** SDK client only for WebSocket sessions (streaming). REST goes via proxy. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async sdk(): Promise<any> {
     if (!this.client) {
-      this.sdkPromise ??= import("@letta-ai/letta-agent-sdk/client").then(
-        (mod) => {
-          this.client = new mod.LettaAgentClient({
-            backend: "cloud",
-            apiKey: this.apiKey,
-            webSocketAuth: "query" as const,
-          });
-          return this.client;
-        },
-      );
+      this.sdkPromise ??= (async () => {
+        await log("sdk: importing @letta-ai/letta-agent-sdk/client…");
+        const mod = await import("@letta-ai/letta-agent-sdk/client");
+        await log("sdk: module imported, constructing client…");
+        this.client = new mod.LettaAgentClient({
+          backend: "cloud",
+          apiKey: this.apiKey,
+          webSocketAuth: "query" as const,
+        });
+        await log("sdk: client constructed");
+        return this.client;
+      })();
       return this.sdkPromise;
     }
     return this.client;
   }
 
   async listAgents(): Promise<AgentSummary[]> {
-    const client = await this.sdk();
-    const items = await client.agents.list();
-    const arr = Array.isArray(items) ? items : (items.items ?? []);
-    return arr.map((a: { id: string; name?: string }) => ({
-      id: a.id,
-      name: a.name ?? a.id,
-    }));
+    await log("listAgents: via proxy…");
+    try {
+      const arr = (await this.proxy.listAgents({ limit: "100" })) as Array<{
+        id: string;
+        name?: string;
+      }>;
+      await log(`listAgents: OK, ${arr.length} agents`);
+      return arr.map((a) => ({
+        id: a.id,
+        name: a.name ?? a.id,
+      }));
+    } catch (e) {
+      await log(`listAgents: ERROR ${e instanceof Error ? e.message : String(e)}`);
+      throw e;
+    }
   }
 
   async listConversations(agentId: string): Promise<ConversationSummary[]> {
-    const client = await this.sdk();
-    const items = await client.conversations.list({ agentId });
-    const arr = Array.isArray(items) ? items : (items.items ?? []);
-    return arr.map(
-      (c: {
+    await log(`listConversations: agentId=${agentId} via proxy…`);
+    try {
+      const arr = (await this.proxy.listConversations(agentId, {
+        limit: "50",
+      })) as Array<{
         id: string;
         name?: string;
         created_at?: string;
         last_modification_date?: string;
-      }) => ({
+      }>;
+      await log(`listConversations: OK, ${arr.length} conversations`);
+      return arr.map((c) => ({
         id: c.id,
         agentId,
         name: c.name ?? "",
         createdAt: c.created_at ?? "",
         lastMessageAt: c.last_modification_date,
-      }),
-    );
+      }));
+    } catch (e) {
+      await log(`listConversations: ERROR ${e instanceof Error ? e.message : String(e)}`);
+      throw e;
+    }
   }
 
   async getHistory(conversationId: string, limit = 50): Promise<LettaMessage[]> {
-    const client = await this.sdk();
-    const res = await client.conversations.listMessages(conversationId, {
-      limit,
-    });
-    const arr = res.messages ?? res.items ?? res;
-    return (Array.isArray(arr) ? arr : []).map(
-      (m: {
+    await log(`getHistory: conv=${conversationId} limit=${limit} via proxy…`);
+    try {
+      const arr = (await this.proxy.listMessages(conversationId, {
+        limit: String(limit),
+      })) as Array<{
         id: string;
         date: string;
         message_type?: string;
         content?: string;
-      }) => ({
+      }>;
+      await log(`getHistory: OK, ${arr.length} messages`);
+      return arr.map((m) => ({
         id: m.id,
         date: m.date,
         messageType: m.message_type ?? "unknown",
         content: typeof m.content === "string" ? m.content : undefined,
         raw: m,
-      }),
-    );
+      }));
+    } catch (e) {
+      await log(`getHistory: ERROR ${e instanceof Error ? e.message : String(e)}`);
+      throw e;
+    }
   }
 
   async findOnlineComputer(): Promise<string | null> {
     try {
-      const client = await this.sdk();
-      const items = await client.computers.list();
-      // Shape verified live: { computers: [...] } — also accept array/items.
-      const arr = Array.isArray(items)
-        ? items
-        : (items.computers ?? items.items ?? []);
-      const online = arr.find(
-        (c: { connectionId?: string | null }) => c.connectionId,
-      );
-      return online ? (online.name ?? online.deviceId ?? null) : null;
-    } catch {
+      await log("findOnlineComputer: via proxy…");
+      const arr = (await this.proxy.listEnvironments({
+        onlineOnly: "true",
+      })) as Array<{
+        name?: string;
+        deviceId?: string;
+        connectionId?: string | null;
+      }>;
+      await log(`findOnlineComputer: ${arr.length} connections`);
+      for (const c of arr) {
+        await log(
+          `findOnlineComputer: - ${c.name ?? "?"} connectionId=${c.connectionId ?? "NULL"}`,
+        );
+      }
+      const online = arr.find((c) => c.connectionId);
+      const name = online ? (online.name ?? online.deviceId ?? null) : null;
+      await log(`findOnlineComputer: result=${name ?? "null"}`);
+      return name;
+    } catch (e) {
+      await log(`findOnlineComputer: ERROR ${e instanceof Error ? e.message : String(e)}`);
       return null;
     }
   }
@@ -123,13 +172,23 @@ export class CloudLettaAdapter implements LettaAdapter {
     const options: Record<string, unknown> = {};
     const computer = computerName ?? this.profile.computerName;
     if (computer) options.computer = { name: computer };
+    await log(
+      `openSession: conv=${conversationId} computer=${computer ?? "none/managed-sandbox"}…`,
+    );
     const session = client.resumeSession(conversationId, options);
-    await session.ready();
-    return session;
+    try {
+      await session.ready();
+      await log("openSession: ready() OK");
+      return session;
+    } catch (e) {
+      await log(`openSession: ready() FAILED ${e instanceof Error ? e.message : String(e)}`);
+      throw e;
+    }
   }
 
   async close(): Promise<void> {
     if (this.client) {
+      await log("adapter close()");
       await this.client.close();
       this.client = null;
       this.sdkPromise = null;

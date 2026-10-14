@@ -22,11 +22,37 @@ fn read_local_letta_key() -> Result<Option<String>, String> {
     Ok(key)
 }
 
+/// Append a debug line to /tmp/lettadock-ui.log (capped at ~1MB).
+/// Phase-3 debugging aid: lets the agent read UI-side errors itself.
+#[tauri::command]
+fn append_debug_log(line: String) -> Result<(), String> {
+    use std::io::Write;
+    let path = std::path::Path::new("/tmp/lettadock-ui.log");
+    // Rotate when over 1MB.
+    if let Ok(meta) = std::fs::metadata(path) {
+        if meta.len() > 1_000_000 {
+            let _ = std::fs::rename(path, std::path::Path::new("/tmp/lettadock-ui.log.1"));
+        }
+    }
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| e.to_string())?;
+    writeln!(f, "{}", line).map_err(|e| e.to_string())
+}
+
+pub mod proxy;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![read_local_letta_key])
+        .invoke_handler(tauri::generate_handler![
+            read_local_letta_key,
+            append_debug_log,
+            proxy::proxy_letta_api
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

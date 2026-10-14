@@ -91,6 +91,7 @@ export function Sidebar() {
     selectProfile,
     selectAgent,
     selectConversation,
+    removeProfile,
     disconnect,
   } = useAppStore();
 
@@ -175,9 +176,13 @@ export function Sidebar() {
                   )}
                 </button>
                 <button
-                  onClick={() => void disconnect(p.id)}
-                  title="Отключить"
-                  className="absolute right-2 top-1.5 hidden rounded p-1 text-muted-foreground hover:text-foreground group-hover:block"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void disconnect(p.id);
+                    removeProfile(p.id);
+                  }}
+                  title="Удалить профиль"
+                  className="absolute right-2 top-1.5 hidden rounded p-1 text-muted-foreground hover:text-red-400 group-hover:block"
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
