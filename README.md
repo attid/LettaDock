@@ -1,81 +1,93 @@
 # LettaDock
 
-Lightweight Linux desktop client for existing Letta agents and conversations.
+Lightweight Linux desktop client for existing [Letta](https://letta.com) agents and
+conversations. Attach to what your agents are already doing — read activity, answer
+questions, approve actions — without leaving your desktop.
 
-Stack: Tauri 2 + Vite + React + TypeScript, `@assistant-ui/react`, Tailwind CSS 4, Zustand.
+> Требует запуск агентов через Letta Cloud или self-hosted App Server.
+> Русская версия README ниже / Russian README below.
 
-Spec: [LettaDock.md](./LettaDock.md)
+## Features
+
+- Attach to existing conversations — history loads, nothing is created behind your back
+- Live streaming responses with stop/cancel
+- Image paste (Ctrl+V) with `[N]` markers — interleave screenshots with text
+- File attachments → agent sandbox, path inserted into the message
+- Per-conversation execution target: cloud sandbox ↔ your own registered computer
+- Model switcher + context-window usage estimate in the header
+- Monaco file viewer and side-by-side diffs for Edit/Write tool calls
+- Dark theme, keyboard-friendly, runs at 150% scaling (COSMIC/Wayland)
+
+## Install
+
+Grab a `.deb` / `.AppImage` from [Releases](../../releases) (Linux x86_64):
+
+```bash
+sudo dpkg -i LettaDock_*.deb
+```
+
+Requires a Letta account (API key) and — for tool execution on your own machine —
+a registered computer (`letta server`).
 
 ## Development
+
+```bash
+pnpm install
+pnpm tauri dev      # dev copy on port 1420
+pnpm tauri build    # stable build → deb/rpm/AppImage
+```
+
+Dev and stable copies run side by side. Both read the API key from
+`~/.letta/settings.json` (env `LETTA_API_KEY`); local storage is separate.
+
+## Architecture
+
+Tauri 2 + React + TypeScript, `@assistant-ui/react`, Tailwind CSS 4, Zustand.
+All Letta Cloud HTTP traffic goes through a local Rust proxy command (no direct
+frontend fetches); WebSocket relays connect directly. Spec: [LettaDock.md](./LettaDock.md).
+
+## Status
+
+MVP complete (Phases 1–4): shell, read-only connectivity, live conversations,
+tool/approval rendering, file viewer + diffs, attachments, images, model/target
+switchers. Phase 5 (packaging polish, secure key storage) in progress.
+
+---
+
+# LettaDock (RU)
+
+Лёгкий Linux-десктоп-клиент для существующих агентов и диалогов Letta.
+Подключаешься к тому, что агенты уже делают: читаешь активность, отвечаешь
+на вопросы, апрувишь действия — не уходя с десктопа.
+
+## Возможности
+
+- Подключение к существующим диалогам — история грузится, ничего не создаётся
+- Живой стриминг ответов, stop/cancel
+- Вставка картинок (Ctrl+V) маркерами `[N]` — скриншоты вперемешку с текстом
+- Файлы → в песочницу агента, путь вставляется в сообщение
+- Исполнение на выбор (пер-диалог): облако ↔ свой компьютер
+- Смена модели + оценка заполнения контекста в шапке
+- Monaco-просмотр файлов и side-by-side диффы для Edit/Write
+- Тёмная тема, 150% масштаб (COSMIC/Wayland)
+
+## Установка
+
+`.deb` / `.AppImage` из [Releases](../../releases) или сборка самому
+(`pnpm tauri build` → `dpkg -i`). Нужен ключ Letta API; для исполнения
+на своей машине — зарегистрированный компьютер (`letta server`).
+
+## Разработка
 
 ```bash
 pnpm install
 pnpm tauri dev
 ```
 
-## Stable install (не мешает дев-копии)
+Дев- и стабл-копии живут параллельно. Ключ обе читают из
+`~/.letta/settings.json`.
 
-```bash
-pnpm tauri build
-sudo dpkg -i src-tauri/target/release/bundle/deb/LettaDock_0.1.0_amd64.deb
-```
+## CI
 
-- стабильная версия ставится системно (меню COSMIC, `lettadock` в PATH)
-- дев-копия (`pnpm tauri dev`, порт 1420) живёт параллельно, конфликта нет
-- ключ API обе версии читают из `~/.letta/settings.json` (общий)
-- localStorage у них раздельный — профили не переносятся автоматически
-- артефакты: deb (3.8MB), rpm, AppImage, бинарник 8.1MB (release, stripped)
-
-Для обновления стабла: `pnpm tauri build && sudo dpkg -i …deb`.
-
-## Status: Phase 3 — live conversation — DONE (owner-confirmed 2026-10-14)
-
-- [x] Phase 2: read-only cloud connectivity (agents, conversations, history)
-- [x] Phase 3: send + streaming + abort via hosted relay sessions
-  - sessions run on the owner's registered remote computer (auto-discovered
-    via computers.list(), e.g. ibook26) — NOT managed sandboxes
-  - ALL SDK HTTP goes through the local Rust proxy (owner decision: nothing
-    leaves the frontend directly; api.letta.com lacks CORS on most routes)
-  - connectionId resolved fresh per session (rotates on device reconnect)
-  - key resolution: entered key this session, else ~/.letta/settings.json
-    env.LETTA_API_KEY via Tauri command (read_local_letta_key)
-- [x] Message rendering: chronological order (API is DESC), user messages
-  visible (stringified content parts parsed), <system-reminder> blocks
-  stripped (human text only), conversation titles from summary
-- [x] Routing shown in UI: data = api.letta.com (via proxy), execution =
-  discovered computer (ibook26)
-- Known limitation: messages sent from other clients (CLI/Telegram) do not
-  arrive live; visible after reopening the conversation.
-
-Debug log: every significant step → /tmp/lettadock-ui.log.
-
-Next: ATTACH-1 (Ctrl+V images/attachments) + TARGET-1 (execution switcher)
-after subagent research on official UI internals lands; then Phase 4
-approvals/files/diffs by separate GO.
-
-## Status: Phase 1 — runnable shell (mock data) — DONE
-
-- [x] Tauri 2 + Vite + React + TS skeleton
-- [x] assistant-ui chat with clearly marked mock messages
-- [x] Server/agent/conversation sidebar with mock entries, dark theme
-- [x] Verified on Pop!_OS COSMIC desktop at 150% scaling (owner-confirmed)
-- [x] Measured cold startup and idle RAM (dev build):
-  - cold spawn via `pnpm tauri dev` (vite ready 304ms + cargo up-to-date check): ~8s to process
-  - idle RSS of app tree: ~578 MB — main ~200 MB, WebKitWebProcess ~310 MB, NetworkProcess ~55 MB
-  - method: `scripts/measure.sh`; note: debug build, release build will be smaller
-  - WebKitGTK subprocesses are counted (spec requirement)
-
-Not implemented (per spec): Letta transport, login, Monaco, approvals, Android.
-
-Phase 1 STOP — awaiting approval for Phase 2 (read-only Letta connectivity).
-
-## Structure
-
-```
-src/
-  chat/        assistant-ui chat (mock runtime)
-  components/  Sidebar
-  lib/         utils, mock data
-  store/       Zustand UI state
-src-tauri/     Tauri 2 shell (no custom commands yet)
-```
+- push/PR в `main` → check: tsc, frontend build, cargo check
+- тег `v*` → сборка + публикация deb/AppImage в GitHub Releases
