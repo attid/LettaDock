@@ -42,6 +42,7 @@ fn append_debug_log(line: String) -> Result<(), String> {
     writeln!(f, "{}", line).map_err(|e| e.to_string())
 }
 
+pub mod clipboard;
 pub mod proxy;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -51,7 +52,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             read_local_letta_key,
             append_debug_log,
-            proxy::proxy_letta_api
+            proxy::proxy_letta_api,
+            clipboard::read_clipboard_image,
+            clipboard::read_clipboard_text
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

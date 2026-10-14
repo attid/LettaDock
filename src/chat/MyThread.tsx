@@ -5,7 +5,6 @@ import { MarkdownText } from "./MarkdownText";
 import { SendHorizontal, Square, Wrench } from "lucide-react";
 import { useAppStore } from "../store/appStore";
 import {
-  fileToDataUrl,
   prepareImage,
   type PreparedImage,
 } from "./images";
@@ -59,21 +58,60 @@ const Composer = () => {
   const error = turnState.phase === "error" ? turnState.error : undefined;
   const [pendingImages, setPendingImages] = useState<PreparedImage[]>([]);
 
-  const addFromClipboard = async (e: React.ClipboardEvent) => {
-    const files = Array.from(e.clipboardData?.files ?? []).filter((f) =>
-      f.type.startsWith("image/"),
-    );
-    if (files.length === 0) return; // normal text paste proceeds untouched
+  // WebKitGTK/Wayland delivers paste events with EMPTY clipboardData
+  // (log-verified: kinds=[] even with image/png in the system clipboard).
+  // So Ctrl+V here reads the clipboard directly via Rust and we intercept
+  // the keydown before the (useless) paste event fires.
+  const onCtrlV = (e: React.KeyboardEvent) => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "v") return;
+    // Let text-only pastes work natively? No — clipboardData is broken here
+    // anyway; we own paste entirely: read image, else re-insert text.
     e.preventDefault();
-    for (const f of files) {
+    void (async () => {
       try {
-        const dataUrl = await fileToDataUrl(f);
-        const prepared = await prepareImage(dataUrl);
-        setPendingImages((prev) => [...prev, prepared]);
-      } catch {
-        /* skip broken image */
+        const { readClipboardImage } = await import("../letta/clipboard");
+        const b64 = await readClipboardImage();
+        if (b64) {
+          const prepared = await prepareImage(`data:image/png;base64,${b64}`);
+          setPendingImages((prev) => [...prev, prepared]);
+          void import("../letta/localKey").then(({ appendDebugLog }) =>
+            appendDebugLog(
+              `[paste] rust clipboard → image ${prepared.width}x${prepared.height} b64len=${prepared.base64.length}`,
+            ).catch(() => {}),
+          );
+          return;
+        }
+        // No image in clipboard: fall back to text paste at cursor.
+        const { invoke } = await import("@tauri-apps/api/core");
+        const text = await invoke<string | null>("read_clipboard_text");
+        if (text) {
+          const el = document.activeElement as HTMLTextAreaElement | null;
+          if (el && el.tagName === "TEXTAREA") {
+            const start = el.selectionStart ?? el.value.length;
+            const end = el.selectionEnd ?? start;
+            el.value =
+              el.value.slice(0, start) + text + el.value.slice(end);
+            const pos = start + text.length;
+            el.setSelectionRange(pos, pos);
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+        }
+      } catch (err) {
+        void import("../letta/localKey").then(({ appendDebugLog }) =>
+          appendDebugLog(`[paste] rust clipboard error: ${String(err).slice(0, 120)}`).catch(() => {}),
+        );
       }
-    }
+    })();
+  };
+
+  const addFromClipboard = (e: React.ClipboardEvent) => {
+    // Diagnostics only now: the real paste path is onCtrlV above.
+    const dt = e.clipboardData;
+    void import("../letta/localKey").then(({ appendDebugLog }) =>
+      appendDebugLog(
+        `[paste-event] files=${dt?.files?.length ?? 0} kinds=[${Array.from(dt?.items ?? []).map((i) => `${i.kind}:${i.type}`).join(",")}] textLen=${dt?.getData("text/plain")?.length ?? 0}`,
+      ).catch(() => {}),
+    );
   };
 
   const handleSend = async (text: string) => {
@@ -125,6 +163,7 @@ const Composer = () => {
         <ComposerPrimitive.Input
           rows={1}
           placeholder="Написать сообщение… (Ctrl+V вставит картинку)"
+          onKeyDown={onCtrlV}
           onPaste={addFromClipboard}
           className="max-h-32 flex-1 resize-none bg-transparent px-2 py-1 text-sm outline-none placeholder:text-muted-foreground"
         />
