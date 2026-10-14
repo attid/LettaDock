@@ -112,7 +112,18 @@ const Composer = () => {
     if (!el) return;
     const start = el.selectionStart ?? el.value.length;
     const end = el.selectionEnd ?? start;
-    el.value = el.value.slice(0, start) + text + el.value.slice(end);
+    // React's value tracker dedups direct .value writes — bypass it via the
+    // native setter so onChange (composer state) actually fires.
+    const proto = Object.getPrototypeOf(el);
+    const nativeSetter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+    if (nativeSetter) {
+      nativeSetter.call(
+        el,
+        el.value.slice(0, start) + text + el.value.slice(end),
+      );
+    } else {
+      el.value = el.value.slice(0, start) + text + el.value.slice(end);
+    }
     const pos = start + text.length;
     el.setSelectionRange(pos, pos);
     el.focus();
