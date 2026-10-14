@@ -109,6 +109,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     sessionKeys.set(id, apiKey);
     saveProfiles(profiles);
     set({ profiles });
+    // Auto-connect immediately so the user sees connect status right away.
+    void get().connect(id);
   },
 
   removeProfile: (id) => {
@@ -174,12 +176,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
       }));
     } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      // SDK errors carry .status for HTTP failures; add a hint for 401.
+      const hint =
+        (err as { status?: number }).status === 401
+          ? " (401: ключ не принят — проверь, что скопирован целиком, без пробелов и переносов)"
+          : "";
       set((s) => ({
         connectionStatus: {
           ...s.connectionStatus,
           [profileId]: {
             state: "error",
-            error: e instanceof Error ? e.message : String(e),
+            error: (err.message || String(e)).slice(0, 300) + hint,
           },
         },
       }));
