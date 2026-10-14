@@ -1,0 +1,44 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: #111318;
+  --color-foreground: #e2e4e9;
+  --color-card: #171a21;
+  --color-card-foreground: #e2e4e9;
+  --color-popover: #171a21;
+  --color-popover-foreground: #e2e4e9;
+  --color-primary: #5b8def;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #232733;
+  --color-secondary-foreground: #e2e4e9;
+  --color-muted: #232733;
+  --color-muted-foreground: #8a90a0;
+  --color-accent: #232733;
+  --color-accent-foreground: #e2e4e9;
+  --color-destructive: #e5484d;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #2a2f3a;
+  --color-input: #2a2f3a;
+  --color-ring: #5b8def;
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+}
