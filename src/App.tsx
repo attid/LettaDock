@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ChatRuntime } from "./chat/ChatRuntime";
-import { MyThread, registerFileOpener } from "./chat/MyThread";
+import { MyThread, registerFileOpener, type OpenFilePayload } from "./chat/MyThread";
 import { FileViewer, type FileRef } from "./fileViewer/FileViewer";
 import { useAppStore } from "./store/appStore";
 import { cn } from "./lib/utils";
@@ -212,18 +212,12 @@ function App() {
       : undefined,
   );
 
-  // Phase 4: file chips in chat open the Monaco viewer. Path sources:
-  //  - /root/downloads/… (sandbox-attached files) → sandbox download
-  //  - local workspace paths (ibook26 target) → not readable via API yet;
-  //    viewer shows a clear error instead of pretending (spec: unsupported
-  //    actions visibly unavailable).
-  const handleOpenFile = (path: string) => {
-    const conversationId = useAppStore.getState().selectedConversationId;
-    // Sandbox id of the current conversation's attachments is not tracked
-    // post-upload (ephemeral, terminated after use) — so sandbox downloads
-    // only work while the sandbox lives. For now: local attempt via Rust.
-    void conversationId;
-    setViewerFile({ path });
+  // Phase 4: file chips and diff buttons open the Monaco viewer.
+  // Round-3 agy P1: handler carries inline diff content — Edit/Write tool
+  // calls open immediately with old/new sides; bare chips (no sandboxId,
+  // no content) show the viewer's explicit "no source" error.
+  const handleOpenFile = (ref: OpenFilePayload) => {
+    setViewerFile(ref);
   };
   // P3 (agy): register in an effect, not in the render body.
   useEffect(() => {

@@ -217,8 +217,9 @@ export class LiveSessionManager {
       );
       for await (const msg of this.session.stream()) {
         if (this.aborted) break;
-        // Conversation switched mid-stream: drop stale events silently.
-        if (this.activeTurnConversationId !== conversationId) break;
+        // Round-3 agy P1: compare against the VIEW (previous guard compared
+        // the turn's own conversation — always true, stream never stopped).
+        if (this.currentViewConversationId !== conversationId) break;
         this.applyStreamEvent(msg);
         this.emit();
         if (msg.type === "result") break;
@@ -245,6 +246,12 @@ export class LiveSessionManager {
         error: e instanceof Error ? e.message : String(e),
       };
       this.emit();
+    } finally {
+      // Round-3 agy P1: a finished turn is no longer active — without this,
+      // the next loadHistory saw a stale "active" turn and aborted itself.
+      if (this.activeTurnConversationId === conversationId) {
+        this.activeTurnConversationId = null;
+      }
     }
   }
 

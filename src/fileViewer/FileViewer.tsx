@@ -6,6 +6,21 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useAppStore } from "../store/appStore";
 
+// Round-3 agy P1: @monaco-editor/react defaults to loading monaco from a CDN
+// (cdn.jsdelivr.net) — blocked by our CSP script-src 'self'. Point the
+// loader at the local npm bundle instead.
+void (async () => {
+  try {
+    const [{ loader }, monaco] = await Promise.all([
+      import("@monaco-editor/react"),
+      import("monaco-editor"),
+    ]);
+    loader.config({ monaco });
+  } catch {
+    /* viewer shows its own error if monaco fails to configure */
+  }
+})();
+
 const MonacoEditor = lazy(() => import("@monaco-editor/react").then((m) => ({ default: m.default })));
 const DiffEditor = lazy(() =>
   import("@monaco-editor/react").then((m) => ({ default: m.DiffEditor })),

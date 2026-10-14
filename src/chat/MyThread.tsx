@@ -20,10 +20,17 @@ const UserMessage = () => (
 // Phase 4: [файл: path] chips in user messages → open in viewer.
 // App registers its handler here (module-level, avoids prop drilling
 // through assistant-ui part components which can't take custom props).
-const openFileRef: { current: ((path: string) => void) | null } = {
+// Round-3 agy P1: handler takes a full payload — ToolCall passes inline
+// diff content, chips pass bare paths.
+export interface OpenFilePayload {
+  path: string;
+  newContent?: string;
+  oldContent?: string;
+}
+const openFileRef: { current: ((ref: OpenFilePayload) => void) | null } = {
   current: null,
 };
-export function registerFileOpener(fn: (path: string) => void) {
+export function registerFileOpener(fn: (ref: OpenFilePayload) => void) {
   openFileRef.current = fn;
 }
 
@@ -35,7 +42,7 @@ function FileChips({ text }: { text: string }) {
       {matches.map((m, i) => (
         <button
           key={i}
-          onClick={() => openFileRef.current?.(m[1])}
+          onClick={() => openFileRef.current?.({ path: m[1] })}
           className="flex items-center gap-1 rounded border border-border bg-secondary/50 px-2 py-0.5 font-mono text-[10px] text-muted-foreground hover:border-primary hover:text-foreground"
           title="Открыть в просмотрщике"
         >
@@ -77,7 +84,12 @@ const ToolCall = ({ toolName, argsText, result }: ToolCallMessagePartProps) => {
         {toolName}
         {canDiff && (
           <button
-            onClick={() => openFileRef.current?.(filePath!)}
+            onClick={() =>
+              openFileRef.current?.({
+                path: filePath!,
+                newContent,
+              })
+            }
             className="ml-auto rounded px-1.5 py-0.5 text-[10px] font-normal text-primary hover:bg-primary/10"
           >
             diff: {filePath?.split("/").pop()}
