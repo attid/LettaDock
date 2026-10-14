@@ -34,37 +34,47 @@ async function log(msg: string): Promise<void> {
 }
 
 /**
- * user_message content may arrive as a string, or as a JSON-stringified
- * array of content parts (e.g. [{type:'text',text:'…'},{type:'image',…}]).
- * Normalize to displayable text.
+ * user_message content may arrive as a string, or as a list of content parts
+ * ({type:'text', text}) — CLI messages embed <system-reminder> blocks plus
+ * the human text as separate parts. Show only the human text: drop parts
+ * that are entirely <system-reminder>…</system-reminder>, and strip any
+ * reminder tags from mixed parts. Images kept as [image] placeholder.
  */
 function normalizeContent(content: unknown): string | undefined {
-  if (typeof content === "string") {
-    // Stringified parts array → extract text parts.
-    if (content.startsWith("[") || content.startsWith("{")) {
-      try {
-        const parsed = JSON.parse(content);
-        if (Array.isArray(parsed)) {
-          const texts = parsed
-            .filter((p) => p?.type === "text" && typeof p.text === "string")
-            .map((p) => p.text);
-          if (texts.length) return texts.join("\n");
-          const kinds = parsed.map((p) => p?.type).filter(Boolean);
-          return kinds.length ? `[${kinds.join(", ")}]` : content;
-        }
-      } catch {
-        /* plain string that happens to start with [ */
+  const stripReminders = (s: string): string =>
+    s
+      .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+      .replace(/<\/?system-reminder>/g, "")
+      .trim();
+
+  const collect = (parts: Array<{ type?: string; text?: string }>): string | undefined => {
+    const texts: string[] = [];
+    const other: string[] = [];
+    for (const p of parts) {
+      if (p?.type === "text" && typeof p.text === "string") {
+        const clean = stripReminders(p.text);
+        if (clean) texts.push(clean);
+      } else if (p?.type && p.type !== "text") {
+        other.push(`[${p.type}]`);
       }
     }
-    return content;
+    const joined = [...texts, ...other].join("\n");
+    return joined || undefined;
+  };
+
+  if (typeof content === "string") {
+    if (content.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed)) return collect(parsed);
+      } catch {
+        /* plain string */
+      }
+    }
+    return stripReminders(content) || content;
   }
   if (Array.isArray(content)) {
-    const texts = content
-      .filter((p) => p?.type === "text" && typeof p.text === "string")
-      .map((p) => p.text);
-    if (texts.length) return texts.join("\n");
-    const kinds = content.map((p) => p?.type).filter(Boolean);
-    return kinds.length ? `[${kinds.join(", ")}]` : undefined;
+    return collect(content as Array<{ type?: string; text?: string }>);
   }
   return undefined;
 }
