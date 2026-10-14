@@ -97,6 +97,22 @@ export function Sidebar() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // DELETE-1: two-step delete — first click arms, second (within 3s) removes.
+  const requestDelete = (id: string) => {
+    if (confirmDeleteId === id) {
+      setConfirmDeleteId(null);
+      void disconnect(id);
+      removeProfile(id);
+      return;
+    }
+    setConfirmDeleteId(id);
+    window.setTimeout(() => {
+      setConfirmDeleteId((cur) => (cur === id ? null : cur));
+    }, 3000);
+  };
+
   const agents = selectedProfileId
     ? (agentsByProfile[selectedProfileId] ?? [])
     : [];
@@ -175,17 +191,29 @@ export function Sidebar() {
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-600" />
                   )}
                 </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void disconnect(p.id);
-                    removeProfile(p.id);
-                  }}
-                  title="Удалить профиль"
-                  className="absolute right-2 top-1.5 hidden rounded p-1 text-muted-foreground hover:text-red-400 group-hover:block"
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
+                {confirmDeleteId === p.id ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      requestDelete(p.id);
+                    }}
+                    title="Нажми ещё раз для удаления"
+                    className="absolute right-2 top-1.5 z-10 flex items-center gap-1 rounded bg-red-950 px-1.5 py-0.5 text-[10px] text-red-300 ring-1 ring-red-800 hover:bg-red-900"
+                  >
+                    удалить?
+                  </button>
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      requestDelete(p.id);
+                    }}
+                    title="Удалить профиль"
+                    className="absolute right-2 top-1.5 hidden rounded p-1 text-muted-foreground hover:text-red-400 group-hover:block"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                )}
               </div>
             );
           })}
