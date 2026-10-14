@@ -1,14 +1,10 @@
-import { useState } from "react";
 import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive } from "@assistant-ui/react";
 import type { TextMessagePartProps, ToolCallMessagePartProps } from "@assistant-ui/react";
 import { MarkdownText } from "./MarkdownText";
 import { SendHorizontal, Square, Wrench } from "lucide-react";
 import { useAppStore } from "../store/appStore";
-import type { ContentPart } from "../letta/liveSession";
-import {
-  prepareImage,
-  type PreparedImage,
-} from "./images";
+import { usePendingImages } from "./pendingImages";
+import { prepareImage } from "./images";
 
 const UserMessage = () => (
   <MessagePrimitive.Root className="flex justify-end px-4 py-2">
@@ -53,11 +49,12 @@ const AssistantMessage = () => (
 
 const Composer = () => {
   const turnState = useAppStore((s) => s.turnState);
-  const sendMessage = useAppStore((s) => s.sendMessage);
-  const sendMessageWithParts = useAppStore((s) => s.sendMessageWithParts);
   const running = turnState.phase === "sending" || turnState.phase === "streaming";
   const error = turnState.phase === "error" ? turnState.error : undefined;
-  const [pendingImages, setPendingImages] = useState<PreparedImage[]>([]);
+  // Shared queue: send path lives in ChatRuntime (single onNew entry point).
+  const pendingImages = usePendingImages((s) => s.pending);
+  const addPending = usePendingImages((s) => s.add);
+  const removePending = usePendingImages((s) => s.remove);
 
   // WebKitGTK/Wayland delivers paste events with EMPTY clipboardData
   // (log-verified: kinds=[] even with image/png in the system clipboard).
@@ -65,8 +62,8 @@ const Composer = () => {
   // the keydown before the (useless) paste event fires.
   //
   // Images insert a [N] marker at the cursor, TUI-style: user writes
-  // "кнопка [] а тут буква []" interleaved with markers; on send the text
-  // is split on markers into alternating text/image content parts.
+  // "кнопка [] а тут буква []" interleaved with markers; ChatRuntime splits
+  // the text on markers into alternating text/image content parts on send.
   const onCtrlV = (e: React.KeyboardEvent) => {
     // Layout-independent: e.key follows the active layout (ru: 'ъ'),
     // e.code is the physical key (KeyV) — use code, per owner feedback.
@@ -84,7 +81,7 @@ const Composer = () => {
         if (b64) {
           const prepared = await prepareImage(`data:image/png;base64,${b64}`);
           const markerIndex = pendingImages.length + 1;
-          setPendingImages((prev) => [...prev, prepared]);
+          addPending(prepared);
           insertAtCursor(`[${markerIndex}]`);
           void import("../letta/localKey").then(({ appendDebugLog }) =>
             appendDebugLog(
@@ -131,51 +128,6 @@ const Composer = () => {
       ).catch(() => {}),
     );
   };
-
-  const handleSend = async (text: string) => {
-    if (pendingImages.length === 0) {
-      await sendMessage(text);
-      return;
-    }
-    // Split on [N] markers → alternating text/image parts, TUI-style.
-    // "кнопка [1] а тут буква [2]" with images 1,2 → text,img1,text,img2.
-    // Text without any marker still works (images appended at the end).
-    const parts: ContentPart[] = [];    const chunks = text.split(/\[(\d+)\]/g);
-    // chunks = [pre, '1', mid, '2', post, ...] — odd indexes are markers.
-    let usedAny = false;
-    for (let i = 0; i < chunks.length; i++) {
-      if (i % 2 === 1) {
-        const idx = parseInt(chunks[i], 10) - 1;
-        const img = pendingImages[idx];
-        if (img) {
-          parts.push({
-            type: "image",
-            source: { type: "base64", media_type: "image/png", data: img.base64 },
-          });
-          usedAny = true;
-        } else {
-          parts.push({ type: "text", text: `[${chunks[i]}]` });
-        }
-      } else if (chunks[i]) {
-        parts.push({ type: "text", text: chunks[i] });
-      }
-    }
-    // Images never referenced by a marker go to the end.
-    if (!usedAny) {
-      for (const img of pendingImages) {
-        parts.push({
-          type: "image",
-          source: { type: "base64", media_type: "image/png", data: img.base64 },
-        });
-      }
-    }
-    setPendingImages([]);
-    if (parts.length === 1 && parts[0].type === "text") {
-      await sendMessage(parts[0].text);
-    } else {
-      await sendMessageWithParts(parts);
-    }
-  };
   return (
     <div className="border-t bg-background/80 p-4">
       {error && (
@@ -196,9 +148,7 @@ const Composer = () => {
                 className="h-full w-full object-cover"
               />
               <button
-                onClick={() =>
-                  setPendingImages((prev) => prev.filter((_, j) => j !== i))
-                }
+                onClick={() => removePending(i)}
                 className="absolute inset-0 hidden items-center justify-center bg-black/60 text-xs text-white group-hover:flex"
               >
                 убрать
@@ -225,16 +175,7 @@ const Composer = () => {
             <Square className="h-4 w-4" />
           </ComposerPrimitive.Cancel>
         ) : (
-          <ComposerPrimitive.Send
-            className="rounded-md bg-primary p-2 text-primary-foreground disabled:opacity-50"
-            onClick={async () => {
-              const input = document.querySelector<HTMLTextAreaElement>(
-                "[data-composer-input] textarea, textarea",
-              );
-              const text = input?.value ?? "";
-              await handleSend(text);
-            }}
-          >
+          <ComposerPrimitive.Send className="rounded-md bg-primary p-2 text-primary-foreground disabled:opacity-50">
             <SendHorizontal className="h-4 w-4" />
           </ComposerPrimitive.Send>
         )}

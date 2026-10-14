@@ -5,6 +5,7 @@ import {
   type ThreadMessageLike,
 } from "@assistant-ui/react";
 import { useAppStore } from "../store/appStore";
+import { usePendingImages } from "./pendingImages";
 import type { LettaMessage } from "../letta/types";
 import type { ReactNode } from "react";
 
@@ -149,7 +150,67 @@ export function ChatRuntime({ children }: { children: ReactNode }) {
   const turnPhase = useAppStore((s) => s.turnState.phase);
   const turnError = useAppStore((s) => s.turnState.error);
   const sendMessage = useAppStore((s) => s.sendMessage);
+  const sendMessageWithParts = useAppStore((s) => s.sendMessageWithParts);
   const abortTurn = useAppStore((s) => s.abortTurn);
+
+  const sendWithMarkers = useMemo(
+    () => async (text: string) => {
+      const images = usePendingImages.getState().pending;
+      if (images.length === 0) {
+        await sendMessage(text);
+        return;
+      }
+      // Split on [N] markers → interleaved text/image parts.
+      const chunks = text.split(/\[(\d+)\]/g);
+      const parts: Array<
+        | { type: "text"; text: string }
+        | {
+            type: "image";
+            source: { type: "base64"; media_type: string; data: string };
+          }
+      > = [];
+      let usedAny = false;
+      for (let i = 0; i < chunks.length; i++) {
+        if (i % 2 === 1) {
+          const img = images[parseInt(chunks[i], 10) - 1];
+          if (img) {
+            parts.push({
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: "image/png",
+                data: img.base64,
+              },
+            });
+            usedAny = true;
+          } else {
+            parts.push({ type: "text", text: `[${chunks[i]}]` });
+          }
+        } else if (chunks[i]) {
+          parts.push({ type: "text", text: chunks[i] });
+        }
+      }
+      if (!usedAny) {
+        for (const img of images) {
+          parts.push({
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: "image/png",
+              data: img.base64,
+            },
+          });
+        }
+      }
+      usePendingImages.getState().clear();
+      if (parts.length === 1 && parts[0].type === "text") {
+        await sendMessage(parts[0].text);
+      } else {
+        await sendMessageWithParts(parts);
+      }
+    },
+    [sendMessage, sendMessageWithParts],
+  );
 
   const messages = useMemo<ThreadMessageLike[]>(() => {
     if (loading) return LOADING_PLACEHOLDER;
@@ -171,13 +232,16 @@ export function ChatRuntime({ children }: { children: ReactNode }) {
         : undefined,
     [running, abortTurn],
   );
+  // Single send path: Enter, Send button, everything goes through here.
+  // The composer text carries [N] image markers inserted by Ctrl+V; we split
+  // them into interleaved text/image parts against the pendingImages queue.
   const onNew = useMemo(
     () => async (message: { content: ReadonlyArray<{ type: string; text?: string }> }) => {
       const textPart = message.content.find((p) => p.type === "text");
       const text = textPart?.type === "text" ? (textPart.text ?? "") : "";
-      await sendMessage(text);
+      await sendWithMarkers(text);
     },
-    [sendMessage],
+    [sendWithMarkers],
   );
   void turnError;
 
