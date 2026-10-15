@@ -4,6 +4,7 @@ import type { TextMessagePartProps, ToolCallMessagePartProps } from "@assistant-
 import { MarkdownText } from "./MarkdownText";
 import { SendHorizontal, Square, Wrench, Paperclip, FileText } from "lucide-react";
 import { useAppStore } from "../store/appStore";
+import { cn } from "../lib/utils";
 import { usePendingImages } from "./pendingImages";
 import { prepareImage } from "./images";
 
@@ -56,14 +57,38 @@ function FileChips({ text }: { text: string }) {
   );
 }
 
-const UserText = ({ text }: TextMessagePartProps) => (
-  <span className="whitespace-pre-wrap">
-    {text}
-    <FileChips text={text} />
-  </span>
-);
+const UserText = ({ text }: TextMessagePartProps) => {
+  // UX-2: hover copy button (PWA parity).
+  const [copied, setCopied] = useState(false);
+  return (
+    <span className="group relative inline-block whitespace-pre-wrap">
+      {text}
+      <button
+        onClick={() => {
+          void navigator.clipboard.writeText(text).then(() => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1500);
+          });
+        }}
+        title="Копировать сообщение"
+        className={cn(
+          "absolute -left-6 top-0 rounded p-0.5 text-[10px] transition-opacity",
+          copied
+            ? "text-emerald-400 opacity-100"
+            : "opacity-0 group-hover:opacity-60 hover:!opacity-100",
+        )}
+      >
+        {copied ? "✓" : "⧉"}
+      </button>
+      <FileChips text={text} />
+    </span>
+  );
+};
 
 const ToolCall = ({ toolName, argsText, result }: ToolCallMessagePartProps) => {
+  // UX-4: collapsed by default (PWA parity) — one line: icon + name +
+  // expand toggle. Click reveals args/result.
+  const [open, setOpen] = useState(false);
   // Edit/Write tool calls: args usually carry file_path + old/new content →
   // offer a diff view. Read-only tools keep the plain fallback.
   let filePath: string | undefined;
@@ -85,30 +110,45 @@ const ToolCall = ({ toolName, argsText, result }: ToolCallMessagePartProps) => {
   return (
     <div className="mb-2 rounded-md border bg-secondary/40 px-3 py-2 font-mono text-xs">
       <div className="flex items-center gap-1.5 font-semibold text-muted-foreground">
-        <Wrench className="h-3 w-3" />
-        {toolName}
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="flex flex-1 items-center gap-1.5 text-left hover:text-foreground"
+        >
+          <Wrench className="h-3 w-3 shrink-0" />
+          <span className="truncate">{toolName}</span>
+          <span className="ml-auto shrink-0 text-[10px] font-normal">
+            {open ? "▲" : "▼"}
+          </span>
+        </button>
         {canDiff && (
           <button
-            onClick={() =>
+            onClick={(e) => {
+              e.stopPropagation();
               openFileRef.current?.({
                 path: filePath!,
                 newContent,
                 oldContent,
-              })
-            }
-            className="ml-auto rounded px-1.5 py-0.5 text-[10px] font-normal text-primary hover:bg-primary/10"
+              });
+            }}
+            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-normal text-primary hover:bg-primary/10"
           >
             diff: {filePath?.split("/").pop()}
           </button>
         )}
       </div>
-      {argsText && (
-        <div className="mt-1 whitespace-pre-wrap break-all text-muted-foreground">
-          {argsText}
-        </div>
-      )}
-      {result != null && (
-        <div className="mt-1 whitespace-pre-wrap break-all">{String(result)}</div>
+      {open && (
+        <>
+          {argsText && (
+            <div className="mt-1 whitespace-pre-wrap break-all text-muted-foreground">
+              {argsText}
+            </div>
+          )}
+          {result != null && (
+            <div className="mt-1 whitespace-pre-wrap break-all">
+              {String(result)}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
