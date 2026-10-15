@@ -92,6 +92,9 @@ interface AppState {
   // UX-3: fork a conversation (whole or from a specific message).
   forkConversation: (conversationId: string, messageId?: string) => Promise<void>;
 
+  // UX-8: rename a conversation (server-side name, PATCH).
+  renameConversation: (conversationId: string, name: string) => Promise<void>;
+
   // Model + context (PWA parity, owner request 2026-10-14)
   modelInfo: import("../letta/modelInfo").ConversationModelInfo | null;
   setModel: (model: string) => Promise<void>;
@@ -546,6 +549,34 @@ export const useAppStore = create<AppState>((set, get) => ({
       liveConversationId = null;
     }
     L(`setConversationPerm: ${conversationId} → ${mode ?? "default"}`);
+  },
+
+  renameConversation: async (conversationId, name) => {
+    const profileId = get().selectedProfileId;
+    const adapter = profileId ? adapters.get(profileId) : undefined;
+    if (!adapter) {
+      L("renameConversation: no adapter");
+      return;
+    }
+    try {
+      await adapter.renameConversation(conversationId, name);
+      // Update the local list: set name (server wins over summary-derived).
+      const agentId = get().selectedAgentId;
+      if (agentId) {
+        const conversations = get().conversationsByAgent[agentId] ?? [];
+        set((s) => ({
+          conversationsByAgent: {
+            ...s.conversationsByAgent,
+            [agentId]: conversations.map((c) =>
+              c.id === conversationId ? { ...c, name } : c,
+            ),
+          },
+        }));
+      }
+      L(`renameConversation: OK ${conversationId} → ${name}`);
+    } catch (e) {
+      L(`renameConversation FAILED: ${e instanceof Error ? e.message : String(e)}`);
+    }
   },
 
   forkConversation: async (conversationId, messageId) => {

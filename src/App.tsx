@@ -47,6 +47,67 @@ function ConnBadge() {
   );
 }
 
+// UX-8: inline rename — pencil next to the title, prompt-style input.
+function Renamer({ conversationId }: { conversationId: string }) {
+  const renameConversation = useAppStore((s) => s.renameConversation);
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => {
+          const name =
+            useAppStore
+              .getState()
+              .conversationsByAgent[useAppStore.getState().selectedAgentId ?? ""]
+              ?.find((c) => c.id === conversationId)?.name ?? "";
+          setValue(name === conversationId ? "" : name);
+          setEditing(true);
+        }}
+        title="Переименовать диалог"
+        className="shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground"
+      >
+        ✎
+      </button>
+    );
+  }
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const name = value.trim();
+        if (name) void renameConversation(conversationId, name);
+        setEditing(false);
+      }}
+      className="ml-2 flex shrink-0 items-center gap-1"
+    >
+      <input
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setEditing(false);
+        }}
+        className="w-48 rounded border bg-background px-2 py-0.5 text-xs outline-none focus:ring-1 focus:ring-ring"
+      />
+      <button
+        type="submit"
+        className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground"
+      >
+        ок
+      </button>
+      <button
+        type="button"
+        onClick={() => setEditing(false)}
+        className="rounded px-1 text-muted-foreground hover:text-foreground"
+      >
+        ✕
+      </button>
+    </form>
+  );
+}
+
 // PERM-1: per-conversation permission mode selector (PWA parity).
 const PERM_LABELS: Record<string, string> = {
   standard: "стандартный",
@@ -413,6 +474,9 @@ function App() {
               ? (conversation.name || conversation.id)
               : "LettaDock"}
           </div>
+          {selectedConversationId && (
+            <Renamer conversationId={selectedConversationId} />
+          )}
           {selectedConversationId && (
             <button
               onClick={() => {

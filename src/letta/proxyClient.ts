@@ -166,6 +166,17 @@ export class LettaProxyClient {
     return r as { id: string };
   }
 
+  /** UX-8: PATCH /v1/conversations/{id} {name} — verified live (200). */
+  async renameConversation(conversationId: string, name: string): Promise<void> {
+    await invokeProxy(
+      "PATCH",
+      `/v1/conversations/${encodeURIComponent(conversationId)}`,
+      this.apiKey,
+      undefined,
+      { name },
+    );
+  }
+
   async listMessages(
     conversationId: string,
     query?: Record<string, string | undefined>,

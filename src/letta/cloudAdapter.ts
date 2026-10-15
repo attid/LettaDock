@@ -234,6 +234,12 @@ export class CloudLettaAdapter implements LettaAdapter {
     };
   }
 
+  /** UX-8: rename a conversation (PATCH {name}, verified live). */
+  async renameConversation(conversationId: string, name: string): Promise<void> {
+    await log(`renameConversation: ${conversationId} → ${name}`);
+    await this.proxy.renameConversation(conversationId, name);
+  }
+
   /** UX-6: read a local file (agent's computer) for the viewer. */
   async readLocalFile(path: string): Promise<string> {
     const res = await this.proxy.readLocalFile(path);
