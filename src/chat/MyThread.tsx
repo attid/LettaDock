@@ -66,12 +66,15 @@ const ToolCall = ({ toolName, argsText, result }: ToolCallMessagePartProps) => {
   // offer a diff view. Read-only tools keep the plain fallback.
   let filePath: string | undefined;
   let newContent: string | undefined;
+  let oldContent: string | undefined;
   try {
     const args = JSON.parse(argsText || "{}") as Record<string, unknown>;
     if (typeof args.file_path === "string") filePath = args.file_path;
     if (typeof args.path === "string") filePath = args.path;
     if (typeof args.new_string === "string") newContent = args.new_string;
     if (typeof args.content === "string") newContent = args.content;
+    if (typeof args.old_string === "string") oldContent = args.old_string;
+    if (typeof args.old_content === "string") oldContent = args.old_content;
   } catch {
     /* non-JSON args */
   }
@@ -88,6 +91,7 @@ const ToolCall = ({ toolName, argsText, result }: ToolCallMessagePartProps) => {
               openFileRef.current?.({
                 path: filePath!,
                 newContent,
+                oldContent,
               })
             }
             className="ml-auto rounded px-1.5 py-0.5 text-[10px] font-normal text-primary hover:bg-primary/10"

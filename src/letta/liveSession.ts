@@ -224,6 +224,9 @@ export class LiveSessionManager {
         this.emit();
         if (msg.type === "result") break;
       }
+      // Round-4 agy P1: a stale turn (view switched mid-stream) must not
+      // reset the turn state of the NEW conversation's in-flight send.
+      if (this.currentViewConversationId !== conversationId) return;
       this.turn = {
         ...this.turn,
         phase: "idle",
