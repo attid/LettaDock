@@ -55,6 +55,13 @@ export class LiveSessionManager {
   private activeTurnConversationId: string | null = null;
   /** CWD-1: per-conversation working directory override. */
   private cwdOverride: string | null = null;
+  /** PERM-1: per-conversation permission mode override. */
+  private permOverride:
+    | "standard"
+    | "acceptEdits"
+    | "unrestricted"
+    | "strict"
+    | null = null;
   /** Conversation currently shown in the UI (round-2 fix: the stream-end
    *  refetch guard must compare against the VIEW, not the turn's own id —
    *  the turn id equals its own conversation by construction, so comparing
@@ -77,6 +84,11 @@ export class LiveSessionManager {
   /** CWD-1: session-scoped working directory (SDK CreateSessionOptions.cwd). */
   setCwd(cwd: string | undefined) {
     this.cwdOverride = cwd ?? null;
+  }
+
+  /** PERM-1: session-scoped permission mode (SDK permissionMode option). */
+  setPerm(mode: "standard" | "acceptEdits" | "unrestricted" | "strict" | undefined) {
+    this.permOverride = mode ?? null;
   }
 
   /** Load (or reload) base history for a conversation, e.g. on open or refresh. */
@@ -195,6 +207,7 @@ export class LiveSessionManager {
           undefined,
           this.targetOverride,
           this.cwdOverride ?? undefined,
+          this.permOverride ?? undefined,
         );
         this.sessionConversationId = conversationId;
       }

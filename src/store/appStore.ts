@@ -82,6 +82,13 @@ interface AppState {
   cwdByConversation: Record<string, string>;
   setConversationCwd: (conversationId: string, cwd: string) => void;
 
+  // PERM-1: per-conversation permission mode (PWA parity).
+  permByConversation: Record<string, "standard" | "acceptEdits" | "unrestricted" | "strict">;
+  setConversationPerm: (
+    conversationId: string,
+    mode: "standard" | "acceptEdits" | "unrestricted" | "strict" | undefined,
+  ) => void;
+
   // Model + context (PWA parity, owner request 2026-10-14)
   modelInfo: import("../letta/modelInfo").ConversationModelInfo | null;
   setModel: (model: string) => Promise<void>;
@@ -161,6 +168,24 @@ function saveCwds(cwds: Record<string, string>) {
   localStorage.setItem(CWDS_KEY, JSON.stringify(cwds));
 }
 
+// PERM-1: per-conversation permission mode. Persisted like cwds.
+const PERMS_KEY = "lettadock.perms.v1";
+type PermMode = "standard" | "acceptEdits" | "unrestricted" | "strict";
+
+function loadPerms(): Record<string, PermMode> {
+  try {
+    const raw = localStorage.getItem(PERMS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+function savePerms(perms: Record<string, PermMode>) {
+  localStorage.setItem(PERMS_KEY, JSON.stringify(perms));
+}
+
 // In-memory session keys, NOT persisted. BUT: to avoid re-entering the key
 // after every restart in the dev phase, the app resolves the key in this order:
 //   1. a key entered this session (sessionKeys map)
@@ -228,6 +253,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   modelInfo: null,
   targetsByConversation: loadTargets(),
   cwdByConversation: loadCwds(),
+  permByConversation: loadPerms(),
   historyLoading: false,
   turnState: { phase: "idle", streamText: "", toolCalls: {} },
   connectionStatus: {},
@@ -460,6 +486,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     // CWD-1: per-conversation working directory (session-scoped via SDK).
     const convCwd = get().cwdByConversation[id];
     live.setCwd(convCwd);
+    // PERM-1: per-conversation permission mode (session-scoped via SDK).
+    const convPerm = get().permByConversation[id];
+    live.setPerm(convPerm);
     try {
       await live.loadHistory(id);
       // P1 race guard: user may have clicked another conversation while we
@@ -496,6 +525,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       liveConversationId = null;
     }
     L(`setConversationCwd: ${conversationId} → ${cwd}`);
+  },
+
+  setConversationPerm: (conversationId, mode) => {
+    const perms = loadPerms();
+    if (mode === undefined) {
+      delete perms[conversationId];
+    } else {
+      perms[conversationId] = mode;
+    }
+    savePerms(perms);
+    set({ permByConversation: { ...perms } });
+    // Drop the live session — next send reopens with the new mode.
+    if (live && liveConversationId === conversationId) {
+      void live.dispose();
+      live = null;
+      liveConversationId = null;
+    }
+    L(`setConversationPerm: ${conversationId} → ${mode ?? "default"}`);
   },
 
   createConversation: async (name) => {

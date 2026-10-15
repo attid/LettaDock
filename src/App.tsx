@@ -47,6 +47,78 @@ function ConnBadge() {
   );
 }
 
+// PERM-1: per-conversation permission mode selector (PWA parity).
+const PERM_LABELS: Record<string, string> = {
+  standard: "стандартный",
+  acceptEdits: "авто-правки",
+  unrestricted: "без ограничений",
+  strict: "строгий",
+};
+
+function PermSelector() {
+  const conversationId = useAppStore((s) => s.selectedConversationId);
+  const perms = useAppStore((s) => s.permByConversation);
+  const setPerm = useAppStore((s) => s.setConversationPerm);
+  const [open, setOpen] = useState(false);
+
+  if (!conversationId) return null;
+  const current = perms[conversationId];
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        title="Режим разрешений: что агент может делать без вопроса"
+      >
+        <span>права: {current ? PERM_LABELS[current] : "агентские"}</span>
+        <span className="text-[10px]">▼</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-5 z-40 w-64 rounded-md border bg-popover p-1 shadow-xl">
+          <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+            режим разрешений диалога
+          </div>
+          <button
+            onClick={() => {
+              setPerm(conversationId, undefined);
+              setOpen(false);
+            }}
+            className={cn(
+              "flex w-full items-center rounded px-2 py-1.5 text-left text-xs hover:bg-secondary",
+              !current && "font-semibold text-foreground",
+            )}
+          >
+            агентские (по умолчанию)
+          </button>
+          {(
+            [
+              ["standard", "стандартный — спрашивать опасное"],
+              ["acceptEdits", "авто-правки — править файлы без вопроса"],
+              ["unrestricted", "без ограничений (yolo)"],
+              ["strict", "строгий — спрашивать всё"],
+            ] as const
+          ).map(([mode, label]) => (
+            <button
+              key={mode}
+              onClick={() => {
+                setPerm(conversationId, mode);
+                setOpen(false);
+              }}
+              className={cn(
+                "flex w-full items-center rounded px-2 py-1.5 text-left text-xs hover:bg-secondary",
+                current === mode && "font-semibold text-foreground",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // CWD-1: per-conversation working directory selector (like the PWA
 // project picker). Lists ~/.letta/projects dirs, stores real path.
 function CwdSelector() {
@@ -342,6 +414,7 @@ function App() {
               : "LettaDock"}
           </div>
           <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+            <PermSelector />
             <CwdSelector />
             <TargetSelector />
             <ModelBadge />

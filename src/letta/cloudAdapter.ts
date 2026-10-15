@@ -292,6 +292,7 @@ export class CloudLettaAdapter implements LettaAdapter {
     computerName?: string,
     targetOverride?: "cloud" | { deviceId: string; name: string } | null,
     cwd?: string,
+    permissionMode?: "standard" | "acceptEdits" | "unrestricted" | "strict",
   ): Promise<any> {
     const client = await this.sdk();
     const options: Record<string, unknown> = {};
@@ -299,6 +300,11 @@ export class CloudLettaAdapter implements LettaAdapter {
       // CWD-1: session-scoped working directory (SDK CreateSessionOptions).
       options.cwd = cwd;
       await log(`openSession: cwd=${cwd}`);
+    }
+    if (permissionMode) {
+      // PERM-1: session-scoped permission mode (SDK permissionMode option).
+      options.permissionMode = permissionMode;
+      await log(`openSession: permissionMode=${permissionMode}`);
     }
     if (targetOverride === "cloud") {
       // No computer option → SDK creates a managed sandbox for the session.
