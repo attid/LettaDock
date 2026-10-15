@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ChatRuntime } from "./chat/ChatRuntime";
-import { MyThread, registerFileOpener, type OpenFilePayload } from "./chat/MyThread";
+import { MyThread } from "./chat/MyThread";
+import { registerFileOpener, type OpenFilePayload } from "./chat/fileOpener";
 import type { FileRef } from "./fileViewer/FileViewer";
 import { useAppStore } from "./store/appStore";
 import { cn } from "./lib/utils";
@@ -13,6 +14,8 @@ const FileViewer = lazy(() =>
   import("./fileViewer/FileViewer").then((m) => ({ default: m.FileViewer })),
 );
 
+// ConnBadge reduced to a dot + profile name (owner: убрать захламление).
+// Routing detail (cloud/computer/cwd) lives in the selectors' tooltips.
 function ConnBadge() {
   const profileId = useAppStore((s) => s.selectedProfileId);
   const status = useAppStore((s) =>
@@ -30,19 +33,15 @@ function ConnBadge() {
         : status?.state === "connecting"
           ? "bg-amber-500 animate-pulse"
           : "bg-zinc-600";
-  // Routing explanation: API всегда облако; исполнение (tools) — на computer.
-  const route =
-    status?.state === "connected"
-      ? profile.computerName
-        ? `облако · исполняет ${profile.computerName}`
-        : "облако · нет компьютера для исполнения"
-      : (status?.state ?? "offline");
   return (
     <>
       <span className={`h-1.5 w-1.5 rounded-full ${color}`} />
-      <span>
-        {profile.name} · {route}
-      </span>
+      <span>{profile.name}</span>
+      {status?.state === "error" && status.error && (
+        <span title={status.error} className="text-red-400">
+          ⚠
+        </span>
+      )}
     </>
   );
 }

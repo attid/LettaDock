@@ -77,7 +77,7 @@ const TextComponent = (_props: TextMessagePartProps) => (
           return (
             <button
               onClick={() =>
-                void import("../chat/MyThread").then(({ openFileRef }) =>
+                void import("./fileOpener").then(({ openFileRef }) =>
                   openFileRef.current?.({ path: text }),
                 )
               }

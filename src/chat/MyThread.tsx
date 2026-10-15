@@ -5,6 +5,9 @@ import { MarkdownText } from "./MarkdownText";
 import { SendHorizontal, Square, Wrench, Paperclip, FileText } from "lucide-react";
 import { useAppStore } from "../store/appStore";
 import { cn } from "../lib/utils";
+import {
+  openFileRef,
+} from "./fileOpener";
 import { usePendingImages } from "./pendingImages";
 import { prepareImage } from "./images";
 
@@ -21,21 +24,7 @@ const UserMessage = () => (
 // Phase 4: [файл: path] chips in user messages → open in viewer.
 // App registers its handler here (module-level, avoids prop drilling
 // through assistant-ui part components which can't take custom props).
-// Round-3 agy P1: handler takes a full payload — ToolCall passes inline
-// diff content, chips pass bare paths.
-export interface OpenFilePayload {
-  path: string;
-  newContent?: string;
-  oldContent?: string;
-  /** From a [файл: …] chip: sandbox is likely terminated → viewer explains. */
-  fromChip?: boolean;
-}
-export const openFileRef: { current: ((ref: OpenFilePayload) => void) | null } = {
-  current: null,
-};
-export function registerFileOpener(fn: (ref: OpenFilePayload) => void) {
-  openFileRef.current = fn;
-}
+// Ref moved to ./fileOpener (fast-refresh compatibility).
 
 function FileChips({ text }: { text: string }) {
   const matches = [...text.matchAll(/\[файл: ([^\]]+)\]/g)];
