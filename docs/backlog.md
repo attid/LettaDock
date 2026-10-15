@@ -153,10 +153,10 @@ Options: (a) route ALL session HTTP through the Rust proxy by injecting a
 custom fetch into createCloudClient; (b) re-implement session on the
 WebSocket layer directly (relay WS works). Leaning (a) — smaller surface.
 
-### S-1: Live updates from other clients
-Messages sent from CLI/Telegram don't appear in an open conversation.
-Investigate relay subscription or polling refresh (spec §3 explicitly says
-document, not promise).
+### S-1: Live updates from other clients — ОТЛОЖЕНО владельцем (2026-10-15)
+Сообщения из CLI/Telegram не появляются в открытом диалоге (видно после
+переоткрытия). Решение владельца: не делать — «будет только проц грузить
+без толку». Пересмотреть, если появится реальная потребность.
 
 ### S-2: WebSocket relay CORS check
 Session streaming goes direct to wss relay with webSocketAuth=query.
