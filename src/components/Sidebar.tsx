@@ -94,6 +94,7 @@ export function Sidebar() {
     removeProfile,
     disconnect,
     connect,
+    createConversation,
   } = useAppStore();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -231,6 +232,16 @@ export function Sidebar() {
       <div className="border-b p-3">
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           <Bot className="h-3.5 w-3.5" /> Агенты
+          {/* UX-5: new conversation for the selected agent */}
+          {selectedAgentId && (
+            <button
+              onClick={() => void createConversation()}
+              title="Новый диалог"
+              className="ml-auto rounded p-0.5 hover:text-foreground"
+            >
+              +
+            </button>
+          )}
         </div>
         <div className="space-y-1">
           {agents.length === 0 && (

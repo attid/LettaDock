@@ -192,6 +192,23 @@ export class CloudLettaAdapter implements LettaAdapter {
     }
   }
 
+  /** UX-5: create a new conversation for this agent. */
+  async createConversation(
+    agentId: string,
+    name?: string,
+  ): Promise<ConversationSummary> {
+    await log(`createConversation: agent=${agentId} name=${name ?? "-"}`);
+    const r = await this.proxy.createConversation(agentId, name);
+    await log(`createConversation: OK ${r.id}`);
+    return {
+      id: r.id,
+      agentId,
+      name: r.name || r.summary?.slice(0, 60) || "Новый диалог",
+      createdAt: new Date().toISOString(),
+      lastMessageAt: new Date().toISOString(),
+    };
+  }
+
   async getHistory(conversationId: string, limit = 50): Promise<LettaMessage[]> {
     await log(`getHistory: conv=${conversationId} limit=${limit} via proxy…`);
     try {

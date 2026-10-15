@@ -127,6 +127,27 @@ export class LettaProxyClient {
     return r.conversations ?? r.items ?? [];
   }
 
+  /** POST /v1/conversations?agent_id=… — create a new conversation.
+   *  Verified live: agent_id goes as a QUERY param (in the JSON body the
+   *  server-side Zod rejects it with 400). Body may carry {name}. */
+  async createConversation(
+    agentId: string,
+    name?: string,
+  ): Promise<{ id: string; name?: string; summary?: string }> {
+    const res = await invokeProxy(
+      "POST",
+      "/v1/conversations",
+      this.apiKey,
+      { agent_id: agentId },
+      name ? { name } : {},
+    );
+    const r = res as { id?: string };
+    if (!r?.id) {
+      throw new Error(`createConversation: no id in response`);
+    }
+    return r as { id: string; name?: string; summary?: string };
+  }
+
   async listMessages(
     conversationId: string,
     query?: Record<string, string | undefined>,

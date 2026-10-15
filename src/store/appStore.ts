@@ -75,6 +75,9 @@ interface AppState {
     target: ConversationTarget,
   ) => void;
 
+  // UX-5: create a new conversation for the selected agent and open it.
+  createConversation: (name?: string) => Promise<void>;
+
   // Model + context (PWA parity, owner request 2026-10-14)
   modelInfo: import("../letta/modelInfo").ConversationModelInfo | null;
   setModel: (model: string) => Promise<void>;
@@ -441,6 +444,31 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (get().selectedConversationId === id) {
         set({ historyLoading: false });
       }
+    }
+  },
+
+  createConversation: async (name) => {
+    const profileId = get().selectedProfileId;
+    const agentId = get().selectedAgentId;
+    const adapter = profileId ? adapters.get(profileId) : undefined;
+    if (!adapter || !agentId) {
+      L("createConversation: no adapter/agent");
+      return;
+    }
+    try {
+      const created = await adapter.createConversation(agentId, name);
+      // Refresh the list, then open the new conversation.
+      const conversations = await adapter.listConversations(agentId);
+      set((s) => ({
+        conversationsByAgent: {
+          ...s.conversationsByAgent,
+          [agentId]: conversations,
+        },
+      }));
+      get().selectConversation(created.id);
+      L(`createConversation: opened ${created.id}`);
+    } catch (e) {
+      L(`createConversation FAILED: ${e instanceof Error ? e.message : String(e)}`);
     }
   },
 
