@@ -290,19 +290,33 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
       }));
       L(`connect: SUCCESS (connected, computer=${computer ?? "none"})`);
-      // Round-5 agy P1: restore the saved agent/conversation selection —
-      // localStorage revived them as ids, but nothing loaded their data.
+      // Round-5/6 agy P1: restore the saved agent/conversation. Note:
+      // selectAgent() wipes savedConversationId from localStorage, so read
+      // BOTH ids BEFORE touching selection state, load conversations
+      // explicitly, then open the conversation (which re-saves selection).
       const saved = loadSelection();
       const restoredAgentId = saved.profileId === profileId ? saved.agentId : null;
+      const restoredConversationId = saved.conversationId;
       if (restoredAgentId && agents.some((a) => a.id === restoredAgentId)) {
-        // Load conversations for the saved agent (selectAgent is sync).
-        get().selectAgent(restoredAgentId);
-        const savedConversationId = saved.conversationId;
-        if (savedConversationId) {
-          const conversations = get().conversationsByAgent[restoredAgentId] ?? [];
-          if (conversations.some((c) => c.id === savedConversationId)) {
-            await get().openConversation(savedConversationId);
-          }
+        const adapter2 = adapters.get(profileId);
+        if (!adapter2) return;
+        // Load conversations WITHOUT clearing saved selection.
+        const conversations = await adapter2.listConversations(restoredAgentId);
+        set((s) => ({
+          conversationsByAgent: {
+            ...s.conversationsByAgent,
+            [restoredAgentId]: conversations,
+          },
+        }));
+        if (
+          restoredConversationId &&
+          conversations.some((c) => c.id === restoredConversationId)
+        ) {
+          set({
+            selectedAgentId: restoredAgentId,
+            selectedConversationId: restoredConversationId,
+          });
+          await get().openConversation(restoredConversationId);
         }
       }
     } catch (e) {

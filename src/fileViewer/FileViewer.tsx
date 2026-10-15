@@ -9,17 +9,22 @@ import { useAppStore } from "../store/appStore";
 // Round-3 agy P1: @monaco-editor/react defaults to loading monaco from a CDN
 // (cdn.jsdelivr.net) — blocked by our CSP script-src 'self'. Point the
 // loader at the local npm bundle instead.
-void (async () => {
-  try {
+//
+// Round-6 agy P1: the floating IIFE raced the editor mount — DiffEditor's
+// loader.init() fired before config(), locked onto the CDN script (CSP
+// blocked it) and stayed dead. Now: a single shared promise; the editor
+// components render only after it resolves.
+let monacoReady: Promise<void> | null = null;
+function ensureMonacoConfigured(): Promise<void> {
+  monacoReady ??= (async () => {
     const [{ loader }, monaco] = await Promise.all([
       import("@monaco-editor/react"),
       import("monaco-editor"),
     ]);
     loader.config({ monaco });
-  } catch {
-    /* viewer shows its own error if monaco fails to configure */
-  }
-})();
+  })();
+  return monacoReady;
+}
 
 const MonacoEditor = lazy(() => import("@monaco-editor/react").then((m) => ({ default: m.default })));
 const DiffEditor = lazy(() =>
@@ -65,6 +70,10 @@ export function FileViewer({
     setError(null);
     void (async () => {
       try {
+        // Round-6 agy P1: Monaco must be configured BEFORE the editor
+        // component mounts (loader.init() locks the CDN path otherwise).
+        await ensureMonacoConfigured();
+        if (cancelled) return;
         if (file.newContent != null) {
           if (!cancelled) setContent(file.newContent);
           return;

@@ -245,6 +245,9 @@ export class LiveSessionManager {
       // round-2 agy fix).
       if (this.currentViewConversationId === conversationId) {
         this.history = await this.adapter.getHistory(conversationId, 50);
+        // Round-6 agy P2: re-check AFTER the network call — the user may
+        // have switched while we waited.
+        if (this.currentViewConversationId !== conversationId) return;
         this.emit();
       }
     } catch (e) {
@@ -355,7 +358,10 @@ export class LiveSessionManager {
   async dispose(): Promise<void> {
     // Round-5 agy P1: a disposed manager must never touch the store again —
     // its in-flight getHistory would overwrite the NEW manager's messages.
+    // Round-6 agy P2: abort the stream loop too, not just block emits.
     this.disposed = true;
+    this.aborted = true;
+    this.currentViewConversationId = null;
     await this.closeSession();
   }
 }
