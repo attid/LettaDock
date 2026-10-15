@@ -215,6 +215,12 @@ export class LettaProxyClient {
     );
   }
 
+  /** CWD-1: project dirs from ~/.letta/projects (encoded name + real path). */
+  async listProjectDirs(): Promise<Array<[string, string]>> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<Array<[string, string]>>("list_project_dirs");
+  }
+
   /** GET /v1/sandboxes/{id}/files?path=… via Rust command (key passed like other proxy calls). */
   async downloadSandboxFile(
     sandboxId: string,

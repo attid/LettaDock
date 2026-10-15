@@ -78,6 +78,10 @@ interface AppState {
   // UX-5: create a new conversation for the selected agent and open it.
   createConversation: (name?: string) => Promise<void>;
 
+  // CWD-1: per-conversation working directory (real path on the computer).
+  cwdByConversation: Record<string, string>;
+  setConversationCwd: (conversationId: string, cwd: string) => void;
+
   // Model + context (PWA parity, owner request 2026-10-14)
   modelInfo: import("../letta/modelInfo").ConversationModelInfo | null;
   setModel: (model: string) => Promise<void>;
@@ -138,6 +142,23 @@ function loadTargets(): Record<string, ConversationTarget> {
 
 function saveTargets(targets: Record<string, ConversationTarget>) {
   localStorage.setItem(TARGETS_KEY, JSON.stringify(targets));
+}
+
+// CWD-1: per-conversation working directory (real path). Persisted like targets.
+const CWDS_KEY = "lettadock.cwds.v1";
+
+function loadCwds(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(CWDS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+function saveCwds(cwds: Record<string, string>) {
+  localStorage.setItem(CWDS_KEY, JSON.stringify(cwds));
 }
 
 // In-memory session keys, NOT persisted. BUT: to avoid re-entering the key
@@ -205,7 +226,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   conversationsByAgent: {},
   liveMessages: [],
   modelInfo: null,
-  targetsByConversation: loadTargets(),  historyLoading: false,
+  targetsByConversation: loadTargets(),
+  cwdByConversation: loadCwds(),
+  historyLoading: false,
   turnState: { phase: "idle", streamText: "", toolCalls: {} },
   connectionStatus: {},
   selectedProfileId: loadSelection().profileId,
@@ -434,6 +457,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     // ("cloud" overrides the computer; undefined keeps profile default).
     const convTarget = get().targetsByConversation[id];
     live.setTarget(convTarget);
+    // CWD-1: per-conversation working directory (session-scoped via SDK).
+    const convCwd = get().cwdByConversation[id];
+    live.setCwd(convCwd);
     try {
       await live.loadHistory(id);
       // P1 race guard: user may have clicked another conversation while we
@@ -456,6 +482,20 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ historyLoading: false });
       }
     }
+  },
+
+  setConversationCwd: (conversationId, cwd) => {
+    const cwds = loadCwds();
+    cwds[conversationId] = cwd;
+    saveCwds(cwds);
+    set({ cwdByConversation: { ...cwds } });
+    // Drop the live session — next send reopens with the new cwd.
+    if (live && liveConversationId === conversationId) {
+      void live.dispose();
+      live = null;
+      liveConversationId = null;
+    }
+    L(`setConversationCwd: ${conversationId} → ${cwd}`);
   },
 
   createConversation: async (name) => {

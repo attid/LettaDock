@@ -209,6 +209,13 @@ export class CloudLettaAdapter implements LettaAdapter {
     };
   }
 
+  /** CWD-1: list known project dirs (~/.letta/projects — registered by
+   *  letta CLI when the owner opens projects). Returns encoded-name +
+   *  real-path pairs from the Rust side. */
+  async listProjects(): Promise<Array<[string, string]>> {
+    return this.proxy.listProjectDirs();
+  }
+
   async getHistory(conversationId: string, limit = 50): Promise<LettaMessage[]> {
     await log(`getHistory: conv=${conversationId} limit=${limit} via proxy…`);
     try {
@@ -284,9 +291,15 @@ export class CloudLettaAdapter implements LettaAdapter {
     conversationId: string,
     computerName?: string,
     targetOverride?: "cloud" | { deviceId: string; name: string } | null,
+    cwd?: string,
   ): Promise<any> {
     const client = await this.sdk();
     const options: Record<string, unknown> = {};
+    if (cwd) {
+      // CWD-1: session-scoped working directory (SDK CreateSessionOptions).
+      options.cwd = cwd;
+      await log(`openSession: cwd=${cwd}`);
+    }
     if (targetOverride === "cloud") {
       // No computer option → SDK creates a managed sandbox for the session.
       await log("openSession: target=cloud (managed sandbox)");

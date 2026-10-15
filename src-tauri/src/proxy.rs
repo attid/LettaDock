@@ -77,6 +77,40 @@ pub async fn proxy_letta_api(req: ProxyRequest) -> Result<ProxyResponse, String>
     Ok(ProxyResponse { status, body })
 }
 
+/// CWD-1: list project directories from ~/.letta/projects — the letta CLI
+/// registers a dir per opened project (name = path with '_' for '/').
+/// Returns (encoded_name, decoded_path) pairs; decoding restores slashes
+/// under known roots (home_itolstov_* → /home/<user>/…).
+#[tauri::command]
+pub fn list_project_dirs() -> Result<Vec<(String, String)>, String> {
+    let home = std::env::var("HOME").map_err(|_| "no HOME")?;
+    let projects = std::path::Path::new(&home).join(".letta/projects");
+    let mut out = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&projects) {
+        for e in entries.flatten() {
+            if !e.path().is_dir() {
+                continue;
+            }
+            let name = e.file_name().to_string_lossy().to_string();
+            // Decode: the CLI encodes '/' as '_' but keeps dots. The first
+            // component is always the home dir name (e.g. home_itolstov),
+            // so: home_<user>_rest… → /home/<user>/<rest with _ → />.
+            let decoded = if let Some(rest) = name.strip_prefix("home_") {
+                if let Some((user, tail)) = rest.split_once('_') {
+                    format!("/home/{}/{}", user, tail.replace('_', "/"))
+                } else {
+                    format!("/home/{}", rest)
+                }
+            } else {
+                name.replacen('_', "/", 1)
+            };
+            out.push((name, decoded));
+        }
+    }
+    out.sort_by(|a, b| a.1.cmp(&b.1));
+    Ok(out)
+}
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadRequest {

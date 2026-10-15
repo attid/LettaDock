@@ -47,6 +47,92 @@ function ConnBadge() {
   );
 }
 
+// CWD-1: per-conversation working directory selector (like the PWA
+// project picker). Lists ~/.letta/projects dirs, stores real path.
+function CwdSelector() {
+  const conversationId = useAppStore((s) => s.selectedConversationId);
+  const cwds = useAppStore((s) => s.cwdByConversation);
+  const setCwd = useAppStore((s) => s.setConversationCwd);
+  const [open, setOpen] = useState(false);
+  const [dirs, setDirs] = useState<Array<[string, string]> | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  if (!conversationId) return null;
+  const current = cwds[conversationId];
+  const label = current
+    ? current.split("/").filter(Boolean).slice(-2).join("/")
+    : "cwd: агентский";
+
+  const openList = async () => {
+    setOpen(true);
+    setLoading(true);
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      setDirs(await invoke<Array<[string, string]>>("list_project_dirs"));
+    } catch {
+      setDirs([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => void openList()}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        title="Рабочая директория диалога (где агент исполняет команды)"
+      >
+        <span className="max-w-[200px] truncate">{label}</span>
+        <span className="text-[10px]">▼</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-5 z-40 max-h-80 w-80 overflow-y-auto rounded-md border bg-popover p-1 shadow-xl">
+          <div className="flex items-center justify-between px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+            <span>рабочая директория диалога</span>
+            <button onClick={() => setOpen(false)} className="hover:text-foreground">
+              ✕
+            </button>
+          </div>
+          <button
+            onClick={() => {
+              setCwd(conversationId, "");
+              setOpen(false);
+            }}
+            className={cn(
+              "flex w-full items-center rounded px-2 py-1.5 text-left text-xs hover:bg-secondary",
+              !current && "font-semibold text-foreground",
+            )}
+          >
+            агентская (по умолчанию)
+          </button>
+          {loading && <div className="px-2 py-2 text-xs">Загрузка…</div>}
+          {dirs?.map(([encoded, real]) => (
+            <button
+              key={encoded}
+              onClick={() => {
+                setCwd(conversationId, real);
+                setOpen(false);
+              }}
+              className={cn(
+                "flex w-full items-center rounded px-2 py-1.5 text-left text-xs hover:bg-secondary",
+                current === real && "font-semibold text-foreground",
+              )}
+            >
+              <span className="truncate">{real}</span>
+            </button>
+          ))}
+          {!loading && dirs && dirs.length === 0 && (
+            <div className="px-2 py-2 text-xs text-muted-foreground">
+              Нет зарегистрированных проектов
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // TARGET-1: per-conversation execution target selector (cloud | computer).
 // Session-scoped: applies when the conversation's session reopens.
 function TargetSelector() {
@@ -256,6 +342,7 @@ function App() {
               : "LettaDock"}
           </div>
           <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+            <CwdSelector />
             <TargetSelector />
             <ModelBadge />
             <ConnBadge />
