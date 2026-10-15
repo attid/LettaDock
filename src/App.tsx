@@ -457,17 +457,13 @@ function App() {
 
   // UI-DEV-1: mark dev builds in the window title (import.meta.env.DEV is
   // true only under `pnpm tauri dev`; stable keeps plain "LettaDock").
-  // Tauri resets the title from tauri.conf.json after page load, so a one-
-  // shot assignment is overwritten — enforce periodically (cheap: 1 write
-  // per 3s, no DOM reads).
+  // document.title does NOT control the native window title in Tauri v2 —
+  // must go through the window API. One call, no polling.
   useEffect(() => {
     if (!import.meta.env.DEV) return;
-    const apply = () => {
-      document.title = `LettaDock DEV ${__GIT_SHA__}`;
-    };
-    apply();
-    const t = window.setInterval(apply, 3000);
-    return () => window.clearInterval(t);
+    void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
+      getCurrentWindow().setTitle(`LettaDock DEV ${__GIT_SHA__}`),
+    );
   }, []);
 
   return (
