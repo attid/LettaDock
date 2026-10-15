@@ -143,6 +143,19 @@ const LOADING_PLACEHOLDER: ThreadMessageLike[] = [
   },
 ];
 
+const NO_CONVERSATION_PLACEHOLDER: ThreadMessageLike[] = [
+  {
+    role: "assistant",
+    id: "no-conversation",
+    content: [
+      {
+        type: "text",
+        text: "Выбери диалог слева — или создай новый кнопкой «+» рядом с агентом.",
+      },
+    ],
+  },
+];
+
 const EMPTY_PLACEHOLDER: ThreadMessageLike[] = [
   {
     role: "assistant",
@@ -154,6 +167,7 @@ const EMPTY_PLACEHOLDER: ThreadMessageLike[] = [
 export function ChatRuntime({ children }: { children: ReactNode }) {
   const liveMessages = useAppStore((s) => s.liveMessages);
   const loading = useAppStore((s) => s.historyLoading);
+  const selectedConversationId = useAppStore((s) => s.selectedConversationId);
   const turnPhase = useAppStore((s) => s.turnState.phase);
   const turnError = useAppStore((s) => s.turnState.error);
   const sendMessage = useAppStore((s) => s.sendMessage);
@@ -220,10 +234,16 @@ export function ChatRuntime({ children }: { children: ReactNode }) {
   );
 
   const messages = useMemo<ThreadMessageLike[]>(() => {
+    // UI-STATE-1: no conversation selected → neutral hint, no "напиши что-
+    // нибудь" (sending would fail anyway).
+    if (!selectedConversationId && !loading) return NO_CONVERSATION_PLACEHOLDER;
     if (loading) return LOADING_PLACEHOLDER;
     if (!liveMessages || liveMessages.length === 0) return EMPTY_PLACEHOLDER;
     return toThreadMessages(liveMessages);
-  }, [liveMessages, loading]);
+  }, [liveMessages, loading, selectedConversationId]);
+
+  // Disable composer when no conversation is selected (UI-STATE-1).
+  const noConversation = !selectedConversationId;
 
   // Primitives: only the phase string (stable identity), not a new object —
   // useExternalStoreRuntime resubscribes/updates when its config object
@@ -255,6 +275,8 @@ export function ChatRuntime({ children }: { children: ReactNode }) {
   const runtime = useExternalStoreRuntime({
     messages,
     isRunning: running,
+    // UI-STATE-1: composer disabled until a real conversation is selected.
+    isDisabled: noConversation,
     convertMessage: (m) => m,
     onCancel,
     onNew,
