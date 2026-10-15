@@ -234,6 +234,15 @@ export class CloudLettaAdapter implements LettaAdapter {
     };
   }
 
+  /** UX-6: read a local file (agent's computer) for the viewer. */
+  async readLocalFile(path: string): Promise<string> {
+    const res = await this.proxy.readLocalFile(path);
+    if (res.status >= 400) {
+      throw new Error(`HTTP ${res.status}: ${res.body.slice(0, 150)}`);
+    }
+    return res.body;
+  }
+
   async getHistory(conversationId: string, limit = 50): Promise<LettaMessage[]> {
     await log(`getHistory: conv=${conversationId} limit=${limit} via proxy…`);
     try {

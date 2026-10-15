@@ -30,7 +30,7 @@ export interface OpenFilePayload {
   /** From a [файл: …] chip: sandbox is likely terminated → viewer explains. */
   fromChip?: boolean;
 }
-const openFileRef: { current: ((ref: OpenFilePayload) => void) | null } = {
+export const openFileRef: { current: ((ref: OpenFilePayload) => void) | null } = {
   current: null,
 };
 export function registerFileOpener(fn: (ref: OpenFilePayload) => void) {

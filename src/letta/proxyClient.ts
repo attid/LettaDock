@@ -239,6 +239,12 @@ export class LettaProxyClient {
     return invoke<Array<[string, string]>>("list_project_dirs");
   }
 
+  /** UX-6: read a local file via Rust (scope-guarded there). */
+  async readLocalFile(path: string): Promise<ProxyResponse> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<ProxyResponse>("read_local_file", { path });
+  }
+
   /** GET /v1/sandboxes/{id}/files?path=… via Rust command (key passed like other proxy calls). */
   async downloadSandboxFile(
     sandboxId: string,

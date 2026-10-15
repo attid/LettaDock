@@ -23,15 +23,7 @@ const TextComponent = (_props: TextMessagePartProps) => (
       li: ({ className, ...props }: React.HTMLAttributes<HTMLLIElement>) => (
         <li className={cn("mb-1 last:mb-0", className)} {...props} />
       ),
-      code: ({ className, ...props }: React.HTMLAttributes<HTMLElement>) => (
-        <code
-          className={cn(
-            "rounded bg-secondary px-1 py-0.5 font-mono text-[0.85em]",
-            className,
-          )}
-          {...props}
-        />
-      ),
+      // UX-6: inline `code` is handled below (path detection).
       pre: ({ className, ...props }: React.HTMLAttributes<HTMLPreElement>) => (
         <pre
           className={cn(
@@ -71,6 +63,44 @@ const TextComponent = (_props: TextMessagePartProps) => (
           {...props}
         />
       ),
+      // UX-6: bare file paths in assistant text become clickable chips —
+      // code spans that look like paths (contain '/' and a known extension)
+      // open the Monaco viewer.
+      code: ({ className, children, ...props }: React.HTMLAttributes<HTMLElement>) => {
+        const text = String(children ?? "");
+        const looksLikePath =
+          text.includes("/") &&
+          /\.(ts|tsx|js|jsx|py|rs|go|json|md|sh|bash|ya?ml|toml|sql|html|css|conf|service)$/i.test(
+            text,
+          );
+        if (looksLikePath && !text.includes(" ")) {
+          return (
+            <button
+              onClick={() =>
+                void import("../chat/MyThread").then(({ openFileRef }) =>
+                  openFileRef.current?.({ path: text }),
+                )
+              }
+              title="Открыть файл в просмотрщике"
+              className="cursor-pointer rounded bg-secondary px-1 py-0.5 font-mono text-[0.85em] text-primary hover:underline"
+              {...props}
+            >
+              {text}
+            </button>
+          );
+        }
+        return (
+          <code
+            className={cn(
+              "rounded bg-secondary px-1 py-0.5 font-mono text-[0.85em]",
+              className,
+            )}
+            {...props}
+          >
+            {children}
+          </code>
+        );
+      },
     }}
   />
 );

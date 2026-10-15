@@ -16,14 +16,39 @@ function toThreadMessages(history: LettaMessage[]): ThreadMessageLike[] {
   const out: ThreadMessageLike[] = [];
   for (const m of history) {
     switch (m.messageType) {
-      case "user_message":
+      case "user_message": {
+        // UX-7: render real image previews interleaved with text — history
+        // content parts carry source.data (base64) for image parts.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rawParts = (m.raw as any)?.content;
+        type SimplePart = { type: string; text?: string; image?: string };
+        let parts: SimplePart[] | undefined;
+        if (Array.isArray(rawParts)) {
+          const rendered: SimplePart[] = [];
+          for (const p of rawParts) {
+            if (p?.type === "image" && p?.source?.data) {
+              rendered.push({
+                type: "image",
+                image: `data:${p.source.media_type ?? "image/png"};base64,${p.source.data}`,
+              });
+            } else if (p?.type === "text" && typeof p.text === "string") {
+              // Reuse already-normalized text (reminders stripped).
+              rendered.push({ type: "text", text: p.text });
+            }
+          }
+          if (rendered.length > 0) parts = rendered;
+        }
+        if (!parts) {
+          parts = [{ type: "text", text: m.content ?? "" }];
+        }
         out.push({
           role: "user",
           id: m.id,
           createdAt: new Date(m.date),
-          content: [{ type: "text", text: m.content ?? "" }],
+          content: parts as ThreadMessageLike["content"],
         });
         break;
+      }
       case "assistant_message":
         out.push({
           role: "assistant",

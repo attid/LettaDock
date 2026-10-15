@@ -111,6 +111,31 @@ pub fn list_project_dirs() -> Result<Vec<(String, String)>, String> {
     Ok(out)
 }
 
+/// UX-6: read a file from the local machine (the computer running the
+/// agent) for the viewer. Scope-limited: must live under the home dir,
+/// size ≤ 2 MB, and .letta/settings.json is refused (key file).
+#[tauri::command]
+pub fn read_local_file(path: String) -> Result<ProxyResponse, String> {
+    let home = std::env::var("HOME").map_err(|_| "no HOME")?;
+    let canonical = std::fs::canonicalize(&path).map_err(|e| format!("path: {e}"))?;
+    if !canonical.starts_with(&home) {
+        return Err("read_local_file: path outside home dir".into());
+    }
+    let name = canonical
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if name == "settings.json" && canonical.to_string_lossy().contains(".letta") {
+        return Err("read_local_file: refusing .letta/settings.json".into());
+    }
+    let meta = std::fs::metadata(&canonical).map_err(|e| e.to_string())?;
+    if meta.len() > 2 * 1024 * 1024 {
+        return Err("файл больше 2 МБ — не влезет в просмотрщик".into());
+    }
+    let body = std::fs::read_to_string(&canonical).map_err(|e| e.to_string())?;
+    Ok(ProxyResponse { status: 200, body })
+}
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadRequest {

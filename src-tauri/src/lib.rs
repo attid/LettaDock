@@ -59,6 +59,7 @@ pub fn run() {
         proxy::proxy_letta_api,
         proxy::proxy_upload_file,
         proxy::proxy_download_sandbox_file,
+        proxy::read_local_file,
         proxy::list_project_dirs,
         clipboard::read_clipboard_image,
         clipboard::read_clipboard_text
@@ -69,6 +70,7 @@ pub fn run() {
         proxy::proxy_letta_api,
         proxy::proxy_upload_file,
         proxy::proxy_download_sandbox_file,
+        proxy::read_local_file,
         proxy::list_project_dirs,
         clipboard::read_clipboard_image,
         clipboard::read_clipboard_text
