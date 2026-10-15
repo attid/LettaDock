@@ -216,6 +216,24 @@ export class CloudLettaAdapter implements LettaAdapter {
     return this.proxy.listProjectDirs();
   }
 
+  /** UX-3: fork a conversation (optionally from a specific message). */
+  async forkConversation(
+    conversationId: string,
+    agentId: string,
+    messageId?: string,
+  ): Promise<ConversationSummary> {
+    await log(`forkConversation: ${conversationId}${messageId ? ` @${messageId}` : ""}`);
+    const r = await this.proxy.forkConversation(conversationId, messageId);
+    await log(`forkConversation: OK ${r.id}`);
+    return {
+      id: r.id,
+      agentId,
+      name: "Форк",
+      createdAt: new Date().toISOString(),
+      lastMessageAt: new Date().toISOString(),
+    };
+  }
+
   async getHistory(conversationId: string, limit = 50): Promise<LettaMessage[]> {
     await log(`getHistory: conv=${conversationId} limit=${limit} via proxy…`);
     try {

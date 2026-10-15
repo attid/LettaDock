@@ -413,6 +413,18 @@ function App() {
               ? (conversation.name || conversation.id)
               : "LettaDock"}
           </div>
+          {selectedConversationId && (
+            <button
+              onClick={() => {
+                const id = selectedConversationId;
+                void useAppStore.getState().forkConversation(id);
+              }}
+              title="Создать копию этого диалога (форк)"
+              className="ml-2 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground"
+            >
+              ⎘ форк
+            </button>
+          )}
           <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
             <PermSelector />
             <CwdSelector />

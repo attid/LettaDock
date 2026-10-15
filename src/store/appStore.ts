@@ -89,6 +89,9 @@ interface AppState {
     mode: "standard" | "acceptEdits" | "unrestricted" | "strict" | undefined,
   ) => void;
 
+  // UX-3: fork a conversation (whole or from a specific message).
+  forkConversation: (conversationId: string, messageId?: string) => Promise<void>;
+
   // Model + context (PWA parity, owner request 2026-10-14)
   modelInfo: import("../letta/modelInfo").ConversationModelInfo | null;
   setModel: (model: string) => Promise<void>;
@@ -543,6 +546,34 @@ export const useAppStore = create<AppState>((set, get) => ({
       liveConversationId = null;
     }
     L(`setConversationPerm: ${conversationId} → ${mode ?? "default"}`);
+  },
+
+  forkConversation: async (conversationId, messageId) => {
+    const profileId = get().selectedProfileId;
+    const agentId = get().selectedAgentId;
+    const adapter = profileId ? adapters.get(profileId) : undefined;
+    if (!adapter || !agentId) {
+      L("forkConversation: no adapter/agent");
+      return;
+    }
+    try {
+      const created = await adapter.forkConversation(
+        conversationId,
+        agentId,
+        messageId,
+      );
+      const conversations = await adapter.listConversations(agentId);
+      set((s) => ({
+        conversationsByAgent: {
+          ...s.conversationsByAgent,
+          [agentId]: conversations,
+        },
+      }));
+      get().selectConversation(created.id);
+      L(`forkConversation: opened ${created.id}`);
+    } catch (e) {
+      L(`forkConversation FAILED: ${e instanceof Error ? e.message : String(e)}`);
+    }
   },
 
   createConversation: async (name) => {

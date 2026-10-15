@@ -148,6 +148,24 @@ export class LettaProxyClient {
     return r as { id: string; name?: string; summary?: string };
   }
 
+  /** POST /v1/conversations/{id}/fork — verified live: body {message_id}
+   *  optional (omit = fork whole conversation). Returns new conversation. */
+  async forkConversation(
+    conversationId: string,
+    messageId?: string,
+  ): Promise<{ id: string }> {
+    const res = await invokeProxy(
+      "POST",
+      `/v1/conversations/${encodeURIComponent(conversationId)}/fork`,
+      this.apiKey,
+      undefined,
+      messageId ? { message_id: messageId } : {},
+    );
+    const r = res as { id?: string };
+    if (!r?.id) throw new Error("fork: no id in response");
+    return r as { id: string };
+  }
+
   async listMessages(
     conversationId: string,
     query?: Record<string, string | undefined>,
