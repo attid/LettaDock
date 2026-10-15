@@ -491,7 +491,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         onMessages: (messages) => set({ liveMessages: messages }),
         onTurnState: (turnState) => set({ turnState }),
         onApprovalRequest: (req) =>
-          set({ pendingApproval: req }),
+          set((s) =>
+            s.pendingApproval?.requestId === req.requestId
+              ? s // relay retries the same control_request — dedup
+              : { pendingApproval: req },
+          ),
       });
       liveConversationId = id;
     }
@@ -597,8 +601,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     live.respondApproval(requestId, allow, allow ? undefined : "Отклонено пользователем в LettaDock");
     set({ pendingApproval: null });
-    // Refresh history — the approved tool's result lands there.
-    void get().refreshConversation();
+    // Round-fix: no refreshConversation here — the stream itself delivers
+    // the tool result; a manual refetch raced the stream and multiplied
+    // approval cards (owner saw 5 cards per action).
   },
 
   forkConversation: async (conversationId, messageId) => {
@@ -718,7 +723,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     live = new LiveSessionManager(adapter, {
       onMessages: (messages) => set({ liveMessages: messages }),
       onTurnState: (turnState) => set({ turnState }),
-      onApprovalRequest: (req) => set({ pendingApproval: req }),
+      onApprovalRequest: (req) =>
+        set((s) =>
+          s.pendingApproval?.requestId === req.requestId
+            ? s
+            : { pendingApproval: req },
+        ),
     });
     liveConversationId = conversationId;
     // Re-apply per-conversation overrides (target/cwd/perm).
