@@ -297,12 +297,17 @@ export function ChatRuntime({ children }: { children: ReactNode }) {
   );
   void turnError;
 
+  // Stabilize every option passed to useExternalStoreRuntime: an inline
+  // arrow (convertMessage) or fresh object re-creates the runtime internals
+  // on each render — with a streaming session this becomes an update loop
+  // (Maximum update depth exceeded).
+  const convertMessage = useMemo(() => (m: ThreadMessageLike) => m, []);
+
   const runtime = useExternalStoreRuntime({
     messages,
     isRunning: running,
-    // UI-STATE-1: composer disabled until a real conversation is selected.
     isDisabled: noConversation,
-    convertMessage: (m) => m,
+    convertMessage,
     onCancel,
     onNew,
   });
