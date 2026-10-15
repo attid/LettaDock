@@ -92,6 +92,9 @@ interface AppState {
   // UX-3: fork a conversation (whole or from a specific message).
   forkConversation: (conversationId: string, messageId?: string) => Promise<void>;
 
+  // Re-create the live manager when dropped (target/cwd/perm switches).
+  ensureLive: () => Promise<LiveSessionManager | null>;
+
   // UX-8: rename a conversation (server-side name, PATCH).
   renameConversation: (conversationId: string, name: string) => Promise<void>;
 
@@ -679,22 +682,51 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   getSelectedAgentId: () => get().selectedAgentId,
 
+  // Re-create the live manager for the current conversation if it was
+  // dropped (target/cwd/perm switch disposes it on purpose). Returns the
+  // ready manager or null (no adapter).
+  async ensureLive(): Promise<LiveSessionManager | null> {
+    const conversationId = get().selectedConversationId;
+    const profileId = get().selectedProfileId;
+    const adapter = profileId ? adapters.get(profileId) : undefined;
+    if (!conversationId || !adapter) return null;
+    if (live && liveConversationId === conversationId) return live;
+    if (live) {
+      await live.dispose();
+      live = null;
+      liveConversationId = null;
+    }
+    live = new LiveSessionManager(adapter, {
+      onMessages: (messages) => set({ liveMessages: messages }),
+      onTurnState: (turnState) => set({ turnState }),
+    });
+    liveConversationId = conversationId;
+    // Re-apply per-conversation overrides (target/cwd/perm).
+    live.setTarget(get().targetsByConversation[conversationId]);
+    live.setCwd(get().cwdByConversation[conversationId]);
+    live.setPerm(get().permByConversation[conversationId]);
+    return live;
+  },
+
   sendMessage: async (text) => {
     const conversationId = get().selectedConversationId;
-    if (!conversationId || !live) return;
-    await live.send(conversationId, text);
+    const liveManager = await get().ensureLive();
+    if (!conversationId || !liveManager) return;
+    await liveManager.send(conversationId, text);
   },
 
   sendMessageWithImages: async (text, images) => {
     const conversationId = get().selectedConversationId;
-    if (!conversationId || !live) return;
-    await live.sendWithImages(conversationId, text, images);
+    const liveManager = await get().ensureLive();
+    if (!conversationId || !liveManager) return;
+    await liveManager.sendWithImages(conversationId, text, images);
   },
 
   sendMessageWithParts: async (parts) => {
     const conversationId = get().selectedConversationId;
-    if (!conversationId || !live) return;
-    await live.sendParts(conversationId, parts);
+    const liveManager = await get().ensureLive();
+    if (!conversationId || !liveManager) return;
+    await liveManager.sendParts(conversationId, parts);
   },
 
   abortTurn: async () => {
