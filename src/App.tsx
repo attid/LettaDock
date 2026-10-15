@@ -426,6 +426,10 @@ function ModelBadge() {
   );
 }
 
+// UI-DEV-1: dev builds mark the window title "LettaDock DEV <sha>" so the
+// dev copy is instantly distinguishable from the installed stable one.
+declare const __GIT_SHA__: string;
+
 function App() {
   const [viewerFile, setViewerFile] = useState<FileRef | null>(null);
   const selectedConversationId = useAppStore((s) => s.selectedConversationId);
@@ -449,6 +453,14 @@ function App() {
   useEffect(() => {
     registerFileOpener(handleOpenFile);
     return () => registerFileOpener(() => {});
+  }, []);
+
+  // UI-DEV-1: mark dev builds in the window title (import.meta.env.DEV is
+  // true only under `pnpm tauri dev`; stable keeps plain "LettaDock").
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      document.title = `LettaDock DEV ${__GIT_SHA__}`;
+    }
   }, []);
 
   return (
