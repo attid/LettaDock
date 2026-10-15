@@ -40,7 +40,13 @@ class ErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    reportError("react.render", error.message, info.componentStack ?? error.stack);
+    // Maximum update depth: include the full componentStack + error stack —
+    // without it the loop source is unfindable.
+    reportError(
+      "react.render",
+      error.message,
+      `componentStack:\n${info.componentStack ?? "-"}\n\nerrorStack:\n${error.stack ?? "-"}`,
+    );
   }
 
   render() {
