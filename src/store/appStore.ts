@@ -290,6 +290,21 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
       }));
       L(`connect: SUCCESS (connected, computer=${computer ?? "none"})`);
+      // Round-5 agy P1: restore the saved agent/conversation selection —
+      // localStorage revived them as ids, but nothing loaded their data.
+      const saved = loadSelection();
+      const restoredAgentId = saved.profileId === profileId ? saved.agentId : null;
+      if (restoredAgentId && agents.some((a) => a.id === restoredAgentId)) {
+        // Load conversations for the saved agent (selectAgent is sync).
+        get().selectAgent(restoredAgentId);
+        const savedConversationId = saved.conversationId;
+        if (savedConversationId) {
+          const conversations = get().conversationsByAgent[restoredAgentId] ?? [];
+          if (conversations.some((c) => c.id === savedConversationId)) {
+            await get().openConversation(savedConversationId);
+          }
+        }
+      }
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       L(`connect: FAILED: ${err.message || String(e)} | stack: ${err.stack?.slice(0, 300)}`);

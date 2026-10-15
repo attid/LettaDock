@@ -97,7 +97,9 @@ function toThreadMessages(history: LettaMessage[]): ThreadMessageLike[] {
           content: [
             {
               type: "tool-call",
-              toolCallId: raw?.tool_call?.name ?? m.id,
+              // Round-5 agy P1: name collides across multiple approvals —
+              // use the message id (unique per approval request).
+              toolCallId: m.id,
               toolName: raw?.tool_call?.name ?? "approval",
               argsText: raw?.tool_call?.arguments ?? "",
               args: safeParseObj(raw?.tool_call?.arguments),

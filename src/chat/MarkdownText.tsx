@@ -57,6 +57,11 @@ const TextComponent = (_props: TextMessagePartProps) => (
               openUrl(href),
             );
           }}
+          // Round-5 agy P1: middle-click auxclick bypasses onClick and
+          // navigates the webview — block it too.
+          onAuxClick={(e) => {
+            if (e.button === 1) e.preventDefault();
+          }}
           {...props}
         />
       ),

@@ -33,6 +33,8 @@ export interface FileRef {
   newContent?: string;
   sandboxId?: string;
   language?: string;
+  /** Round-5: chip click — sandbox is likely terminated, show explanation. */
+  fromChip?: boolean;
 }
 
 function languageFromPath(path: string): string {
@@ -86,7 +88,11 @@ export function FileViewer({
           if (!cancelled) setContent(res.body);
           return;
         }
-        throw new Error("нет источника содержимого (sandbox недоступен)");
+        throw new Error(
+          file.fromChip
+            ? "Файл из вложений: песочница уже погашена. Агент видит файл по этому пути — попроси его показать содержимое или перешли файл заново."
+            : "нет источника содержимого (sandbox недоступен)",
+        );
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       } finally {

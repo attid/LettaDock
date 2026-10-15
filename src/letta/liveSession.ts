@@ -90,11 +90,18 @@ export class LiveSessionManager {
     // BEFORE emitting (round-2 agy P2: emit pushed stale rows into the
     // store before the caller's own guard could run).
     if (this.currentViewConversationId !== conversationId) return;
+    // Round-5 agy P1: a disposed manager must not emit at all.
+    if (this.disposed) return;
     this.history = history;
     this.emit();
   }
 
+  /** Set true in dispose(): a disposed manager never emits again
+   *  (round-5 agy P1: stale getHistory overwrote the new manager's view). */
+  private disposed = false;
+
   private emit() {
+    if (this.disposed) return;
     const combined: LettaMessage[] = [...this.history];
     // Optimistic user message is already appended to history by send().
     if (this.turn.phase === "streaming" || this.turn.streamText) {
@@ -346,6 +353,9 @@ export class LiveSessionManager {
   }
 
   async dispose(): Promise<void> {
+    // Round-5 agy P1: a disposed manager must never touch the store again —
+    // its in-flight getHistory would overwrite the NEW manager's messages.
+    this.disposed = true;
     await this.closeSession();
   }
 }

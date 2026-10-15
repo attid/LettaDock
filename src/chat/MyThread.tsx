@@ -26,6 +26,8 @@ export interface OpenFilePayload {
   path: string;
   newContent?: string;
   oldContent?: string;
+  /** From a [файл: …] chip: sandbox is likely terminated → viewer explains. */
+  fromChip?: boolean;
 }
 const openFileRef: { current: ((ref: OpenFilePayload) => void) | null } = {
   current: null,
@@ -42,7 +44,7 @@ function FileChips({ text }: { text: string }) {
       {matches.map((m, i) => (
         <button
           key={i}
-          onClick={() => openFileRef.current?.({ path: m[1] })}
+          onClick={() => openFileRef.current?.({ path: m[1], fromChip: true })}
           className="flex items-center gap-1 rounded border border-border bg-secondary/50 px-2 py-0.5 font-mono text-[10px] text-muted-foreground hover:border-primary hover:text-foreground"
           title="Открыть в просмотрщике"
         >

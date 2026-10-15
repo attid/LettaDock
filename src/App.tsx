@@ -1,10 +1,17 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ChatRuntime } from "./chat/ChatRuntime";
 import { MyThread, registerFileOpener, type OpenFilePayload } from "./chat/MyThread";
-import { FileViewer, type FileRef } from "./fileViewer/FileViewer";
+import type { FileRef } from "./fileViewer/FileViewer";
 import { useAppStore } from "./store/appStore";
 import { cn } from "./lib/utils";
+
+// Round-5 agy P1: static FileViewer import pulls monaco-editor into the
+// main chunk AND defeats lazy loading (the IIFE config runs at startup).
+// Lazy chunk keeps Monaco out of the critical path.
+const FileViewer = lazy(() =>
+  import("./fileViewer/FileViewer").then((m) => ({ default: m.FileViewer })),
+);
 
 function ConnBadge() {
   const profileId = useAppStore((s) => s.selectedProfileId);
@@ -228,7 +235,15 @@ function App() {
   return (
     <>
     {viewerFile && (
-      <FileViewer file={viewerFile} onClose={() => setViewerFile(null)} />
+      <Suspense
+        fallback={
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 text-sm text-muted-foreground">
+            Загрузка просмотрщика…
+          </div>
+        }
+      >
+        <FileViewer file={viewerFile} onClose={() => setViewerFile(null)} />
+      </Suspense>
     )}
     <ChatRuntime>
       <div className="flex h-screen overflow-hidden bg-background text-foreground">
