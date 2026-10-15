@@ -16,17 +16,37 @@ import { cn } from "../lib/utils";
 
 function ConnectDialog({ onClose }: { onClose: () => void }) {
   const addProfile = useAppStore((s) => s.addProfile);
+  // KEY-1: use the system key from ~/.letta/settings.json — no paste needed.
+  const [useSystemKey, setUseSystemKey] = useState(false);
+  const [systemKeyError, setSystemKeyError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const name = String(fd.get("name") || "Letta Cloud").trim();
+    if (useSystemKey) {
+      // Key is resolved at connect time by resolveKey() — empty key marks
+      // the profile as "system key" (resolveKey checks settings.json).
+      addProfile(name, "cloud", "__system__");
+      onClose();
+      return;
+    }
     // User should never think about whitespace: strip ALL whitespace anywhere
     // in the pasted key (copied keys sometimes carry wrapped newlines).
     const apiKey = String(fd.get("apiKey") || "").replace(/\s+/g, "");
     if (!apiKey) return;
     addProfile(name, "cloud", apiKey);
     onClose();
+  };
+
+  const checkSystemKey = () => {
+    void import("../letta/localKey").then(async ({ readLocalLettaKey }) => {
+      const key = await readLocalLettaKey();
+      setSystemKeyError(
+        key ? null : "не найден — проверь ~/.letta/settings.json (env.LETTA_API_KEY)",
+      );
+      if (key) setUseSystemKey(true);
+    });
   };
 
   return (
@@ -44,21 +64,40 @@ function ConnectDialog({ onClose }: { onClose: () => void }) {
             className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
           />
         </label>
-        <label className="mb-4 block text-sm">
-          <span className="mb-1 block text-muted-foreground">API-ключ</span>
+        <label className="mb-3 flex items-center gap-2 text-sm">
           <input
-            name="apiKey"
-            type="password"
-            required
-            placeholder="LETTER… ключ хранится только в памяти сессии"
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+            type="checkbox"
+            checked={useSystemKey}
+            onChange={(e) => {
+              setUseSystemKey(e.target.checked);
+              setSystemKeyError(null);
+              if (e.target.checked) checkSystemKey();
+            }}
+            className="h-4 w-4"
           />
+          <span>Взять ключ из ~/.letta/settings.json</span>
         </label>
-        <p className="mb-4 text-xs text-muted-foreground">
-          Phase 2: ключ не сохраняется на диск (ни localStorage, ни файлы) —
-          живёт в памяти, пока запущено приложение. Постоянное хранение — в
-          Phase 5 через secure storage.
-        </p>
+        {useSystemKey && systemKeyError && (
+          <p className="mb-3 text-xs text-red-400">
+            Системный ключ {systemKeyError}
+          </p>
+        )}
+        {!useSystemKey && (
+          <label className="mb-4 block text-sm">
+            <span className="mb-1 block text-muted-foreground">API-ключ</span>
+            <input
+              name="apiKey"
+              type="password"
+              required
+              placeholder="at-let-… или sk-let-…"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+            />
+            <span className="mt-1 block text-xs text-muted-foreground">
+              Ключ живёт в памяти приложения, не пишется на диск. Если на
+              машине настроен Letta Code — проще галочка выше.
+            </span>
+          </label>
+        )}
         <div className="flex justify-end gap-2">
           <button
             type="button"

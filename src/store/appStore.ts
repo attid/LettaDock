@@ -170,6 +170,17 @@ async function resolveKey(profileId: string): Promise<string | undefined> {
   L(`resolveKey: profile=${profileId} sessionKey=${sessionKeys.has(profileId)}`);
   const local = sessionKeys.get(profileId);
   if (local) {
+    // "__system__" marker (KEY-1): don't cache — always re-resolve fresh.
+    if (local === "__system__") {
+      try {
+        const { readLocalLettaKey } = await import("../letta/localKey");
+        const key = await readLocalLettaKey();
+        if (key) return key;
+      } catch {
+        /* fall through */
+      }
+      return undefined;
+    }
     L("resolveKey: using session key");
     return local;
   }
