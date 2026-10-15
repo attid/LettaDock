@@ -25,6 +25,12 @@ export interface ChatEventHandlers {
   /** Called with the full updated message list after every change. */
   onMessages: (messages: LettaMessage[]) => void;
   onTurnState: (state: TurnState) => void;
+  /** APPROVE-1: a tool needs approval before it can run. */
+  onApprovalRequest?: (req: {
+    requestId: string;
+    toolName: string;
+    toolInput: Record<string, unknown>;
+  }) => void;
 }
 
 const idleState: TurnState = {
@@ -55,6 +61,11 @@ export class LiveSessionManager {
   private activeTurnConversationId: string | null = null;
   /** CWD-1: per-conversation working directory override. */
   private cwdOverride: string | null = null;
+  /** APPROVE-1: pending approval resolvers by requestId. */
+  private approvalResolvers = new Map<
+    string,
+    (d: { behavior: "allow" | "deny"; message?: string }) => void
+  >();
   /** PERM-1: per-conversation permission mode override. */
   private permOverride:
     | "standard"
@@ -89,6 +100,15 @@ export class LiveSessionManager {
   /** PERM-1: session-scoped permission mode (SDK permissionMode option). */
   setPerm(mode: "standard" | "acceptEdits" | "unrestricted" | "strict" | undefined) {
     this.permOverride = mode ?? null;
+  }
+
+  /** APPROVE-1: resolve a pending approval from the UI. */
+  respondApproval(requestId: string, allow: boolean, message?: string) {
+    const resolve = this.approvalResolvers.get(requestId);
+    if (resolve) {
+      this.approvalResolvers.delete(requestId);
+      resolve({ behavior: allow ? "allow" : "deny", message });
+    }
   }
 
   /** Load (or reload) base history for a conversation, e.g. on open or refresh. */
@@ -208,6 +228,19 @@ export class LiveSessionManager {
           this.targetOverride,
           this.cwdOverride ?? undefined,
           this.permOverride ?? undefined,
+          // APPROVE-1: route approval requests to the UI.
+          this.handlers.onApprovalRequest
+            ? (toolName: string, toolInput: Record<string, unknown>) =>
+                new Promise<{ behavior: "allow" | "deny"; message?: string }>((resolve) => {
+                  const requestId = `appr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                  this.handlers.onApprovalRequest?.({
+                    requestId,
+                    toolName,
+                    toolInput,
+                  });
+                  this.approvalResolvers.set(requestId, resolve);
+                })
+            : undefined,
         );
         this.sessionConversationId = conversationId;
       }

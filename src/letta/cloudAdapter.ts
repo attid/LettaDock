@@ -326,9 +326,15 @@ export class CloudLettaAdapter implements LettaAdapter {
     targetOverride?: "cloud" | { deviceId: string; name: string } | null,
     cwd?: string,
     permissionMode?: "standard" | "acceptEdits" | "unrestricted" | "strict",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    canUseTool?: any,
   ): Promise<any> {
     const client = await this.sdk();
     const options: Record<string, unknown> = {};
+    if (canUseTool) {
+      // APPROVE-1: session routes approval requests to our callback.
+      options.canUseTool = canUseTool;
+    }
     if (cwd) {
       // CWD-1: session-scoped working directory (SDK CreateSessionOptions).
       options.cwd = cwd;

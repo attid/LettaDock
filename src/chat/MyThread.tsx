@@ -146,12 +146,45 @@ const ToolCall = ({ toolName, argsText, result }: ToolCallMessagePartProps) => {
 const AssistantMessage = () => (
   <MessagePrimitive.Root className="px-4 py-2">
     <div className="max-w-[90%] rounded-lg rounded-bl-sm bg-card px-4 py-2 text-foreground">
+      <ApprovalCard />
       <MessagePrimitive.Parts
         components={{ Text: MarkdownText, tools: { Fallback: ToolCall } }}
       />
     </div>
   </MessagePrimitive.Root>
 );
+
+// APPROVE-1: inline approval card — [Одобрить] [Отклонить] in the doc.
+const ApprovalCard = () => {
+  const pending = useAppStore((s) => s.pendingApproval);
+  const respondApproval = useAppStore((s) => s.respondApproval);
+  if (!pending) return null;
+  return (
+    <div className="mb-2 rounded-md border border-amber-700/50 bg-amber-950/30 px-3 py-2.5">
+      <div className="mb-1 text-xs font-semibold text-amber-300">
+        Тул требует подтверждения
+      </div>
+      <div className="font-mono text-xs text-foreground">{pending.toolName}</div>
+      <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded bg-secondary/50 p-2 text-[10px] text-muted-foreground">
+        {JSON.stringify(pending.toolInput, null, 2)}
+      </pre>
+      <div className="mt-2 flex gap-2">
+        <button
+          onClick={() => respondApproval(pending.requestId, true)}
+          className="rounded-md bg-emerald-700 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-600"
+        >
+          Одобрить
+        </button>
+        <button
+          onClick={() => respondApproval(pending.requestId, false)}
+          className="rounded-md border border-red-800 px-3 py-1 text-xs font-medium text-red-300 hover:bg-red-950/50"
+        >
+          Отклонить
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const Composer = () => {
   const turnState = useAppStore((s) => s.turnState);

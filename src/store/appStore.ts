@@ -92,6 +92,10 @@ interface AppState {
   // UX-3: fork a conversation (whole or from a specific message).
   forkConversation: (conversationId: string, messageId?: string) => Promise<void>;
 
+  // APPROVE-1: pending tool approval from the live session.
+  pendingApproval: { requestId: string; toolName: string; toolInput: Record<string, unknown> } | null;
+  respondApproval: (requestId: string, allow: boolean) => void;
+
   // Re-create the live manager when dropped (target/cwd/perm switches).
   ensureLive: () => Promise<LiveSessionManager | null>;
 
@@ -260,6 +264,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   conversationsByAgent: {},
   liveMessages: [],
   modelInfo: null,
+  pendingApproval: null,
   targetsByConversation: loadTargets(),
   cwdByConversation: loadCwds(),
   permByConversation: loadPerms(),
@@ -485,6 +490,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       live = new LiveSessionManager(adapter, {
         onMessages: (messages) => set({ liveMessages: messages }),
         onTurnState: (turnState) => set({ turnState }),
+        onApprovalRequest: (req) =>
+          set({ pendingApproval: req }),
       });
       liveConversationId = id;
     }
@@ -580,6 +587,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e) {
       L(`renameConversation FAILED: ${e instanceof Error ? e.message : String(e)}`);
     }
+  },
+
+  respondApproval: (requestId, allow) => {
+    const conversationId = get().selectedConversationId;
+    if (!conversationId || !live) {
+      set({ pendingApproval: null });
+      return;
+    }
+    live.respondApproval(requestId, allow, allow ? undefined : "Отклонено пользователем в LettaDock");
+    set({ pendingApproval: null });
+    // Refresh history — the approved tool's result lands there.
+    void get().refreshConversation();
   },
 
   forkConversation: async (conversationId, messageId) => {
@@ -699,6 +718,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     live = new LiveSessionManager(adapter, {
       onMessages: (messages) => set({ liveMessages: messages }),
       onTurnState: (turnState) => set({ turnState }),
+      onApprovalRequest: (req) => set({ pendingApproval: req }),
     });
     liveConversationId = conversationId;
     // Re-apply per-conversation overrides (target/cwd/perm).
